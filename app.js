@@ -17,7 +17,7 @@
  * Der Worker liefert exakt dasselbe Schema wie die Mock-Daten – kein Mapping nötig.
  * ------------------------------------------------------------------ */
 const CONFIG = {
-  apiBase: 'http://localhost:8787',   // lokaler Worker (npx wrangler dev). Für Produktion: deine workers.dev-URL
+  apiBase: 'https://wm-ticker.manuel-fades50.workers.dev',   // Produktions-Worker (Live-Daten). Lokal testen: 'http://localhost:8787'
   pollLiveMs: 60000,           // Abfrage-Intervall, wenn mind. ein Spiel LÄUFT
   pollIdleMs: 600000,          // Abfrage-Intervall sonst (Ergebnisse ändern sich selten)
 };

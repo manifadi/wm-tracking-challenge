@@ -2,10 +2,10 @@ name = "wm-ticker"
 main = "worker.js"
 compatibility_date = "2026-06-01"
 
-# Demo-Modus: läuft sofort ohne API-Keys (liefert Demo-Daten).
-# Auf "false" setzen, sobald du die Secrets hinterlegt hast (siehe README).
+# Produktions-Default: echte Daten. Ohne hinterlegte Secrets fällt der Worker
+# automatisch & sicher auf Demo-Daten zurück (kein Absturz).
 [vars]
-DEMO_MODE = "true"
+DEMO_MODE = "false"
 
 # Secrets NICHT hier eintragen – per CLI setzen:
 #   npx wrangler secret put FOOTBALL_DATA_KEY
