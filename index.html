@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="de" class="h-full">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#0a0f0d" media="(prefers-color-scheme: dark)" />
+  <meta name="theme-color" content="#f5f5f7" media="(prefers-color-scheme: light)" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="WM Lauf-Challenge" />
+  <title>WM 2026 · Lauf-Challenge</title>
+
+  <link rel="manifest" href="./manifest.webmanifest" />
+  <!-- iOS Homescreen-Icon (Safari nutzt NICHT das Manifest, sondern apple-touch-icon, PNG zwingend) -->
+  <link rel="apple-touch-icon" sizes="180x180" href="./icons/icon-180.png" />
+  <link rel="icon" type="image/png" sizes="192x192" href="./icons/icon-192.png" />
+  <link rel="icon" type="image/png" sizes="512x512" href="./icons/icon-512.png" />
+  <link rel="icon" type="image/svg+xml" href="./icon.svg" />
+
+  <!-- Tailwind (CDN-Prototyp – für Produktion via PostCSS/CLI bundeln) -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            // WM-2026-Akzente + „Stadion"-Energie (Fusion aus den Inspo-Designs)
+            wm: {
+              gold:    '#E4B458',
+              green:   '#34C759', // Erfolg/positiv
+              red:     '#FF3B30', // Live/Warnung
+              blue:    '#0A84FF', // System-Blau
+              lime:    '#B8F23C', // Acid-Lime CTA (Bild 1)
+              emerald: '#10B981', // Smaragd (Bild 2)
+              plum:    '#7C3AED', // Lila-Akzent Light-Mode (Bild 3)
+            },
+            // Flächen: hell (Apple-clean) + dunkel (Pitch-Schwarzgrün)
+            ink: {
+              50:  '#f5f5f7',
+              100: '#e8e8ed',
+              900: '#141b17', // Karten im Dark-Mode (leicht grünstichig)
+              950: '#0a0f0d', // Body im Dark-Mode (Pitch-Schwarzgrün)
+            }
+          },
+          fontFamily: {
+            sans: ['-apple-system','BlinkMacSystemFont','SF Pro Display','Segoe UI','Roboto','Helvetica','Arial','sans-serif'],
+          },
+          boxShadow: {
+            card: '0 1px 2px rgba(0,0,0,0.04), 0 8px 24px rgba(0,0,0,0.06)',
+            'card-dark': '0 1px 2px rgba(0,0,0,0.4), 0 8px 24px rgba(0,0,0,0.5)',
+          },
+          borderRadius: { xl2: '1.25rem' }
+        }
+      }
+    }
+  </script>
+
+  <style>
+    /* Sanfte System-Typografie & Anti-Aliasing wie auf Apple-Plattformen */
+    html { -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; }
+    body { -webkit-tap-highlight-color: transparent; }
+
+    /* Safe-Area-Insets (iPhone-Notch / Home-Indicator) */
+    .pt-safe { padding-top: max(env(safe-area-inset-top), 0.75rem); }
+    .pb-safe { padding-bottom: calc(env(safe-area-inset-bottom) + 4.75rem); }
+    .nav-safe { padding-bottom: max(env(safe-area-inset-bottom), 0.5rem); }
+
+    /* Apple-Watch-Fortschrittsring */
+    .ring-track  { stroke: rgba(120,120,128,0.18); }
+    .ring-value  { transition: stroke-dashoffset 700ms cubic-bezier(.22,1,.36,1); stroke-linecap: round; }
+
+    /* Live-Puls */
+    @keyframes pulse-dot { 0%,100% { opacity: 1; transform: scale(1); } 50% { opacity: .35; transform: scale(.85); } }
+    .live-dot { animation: pulse-dot 1.4s ease-in-out infinite; }
+
+    /* Sanftes Einblenden bei Tab-Wechsel */
+    @keyframes fade-up { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+    .fade-up { animation: fade-up .32s cubic-bezier(.22,1,.36,1); }
+
+    /* Apple-Style Toggle */
+    .switch { width: 51px; height: 31px; border-radius: 9999px; transition: background-color .25s ease; }
+    .switch-knob { width: 27px; height: 27px; transition: transform .25s cubic-bezier(.22,1,.36,1); box-shadow: 0 2px 4px rgba(0,0,0,.2); }
+    .switch[data-on="true"] .switch-knob { transform: translateX(20px); }
+
+    /* Scrollbar dezent ausblenden (mobil-Look) */
+    ::-webkit-scrollbar { width: 0; height: 0; }
+
+    /* ---- Feier & Animation ---- */
+    .confetti-canvas { position: fixed; inset: 0; z-index: 70; pointer-events: none; }
+
+    @keyframes toast-rise {
+      0%   { opacity: 0; transform: translate(-50%, 10px) scale(.9); }
+      18%  { opacity: 1; transform: translate(-50%, 0) scale(1); }
+      80%  { opacity: 1; transform: translate(-50%, -36px) scale(1); }
+      100% { opacity: 0; transform: translate(-50%, -64px) scale(.96); }
+    }
+    .celebrate-toast {
+      position: fixed; left: 50%; bottom: 38%; z-index: 71; pointer-events: none;
+      font-weight: 800; font-size: 26px; color: #34C759;
+      text-shadow: 0 2px 12px rgba(0,0,0,.25);
+      animation: toast-rise 1.5s cubic-bezier(.22,1,.36,1) forwards;
+    }
+
+    @keyframes overlay-pop {
+      0%   { opacity: 0; transform: scale(.8); }
+      14%  { opacity: 1; transform: scale(1.04); }
+      24%  { transform: scale(1); }
+      82%  { opacity: 1; }
+      100% { opacity: 0; transform: scale(.97); }
+    }
+    .milestone-overlay { position: fixed; inset: 0; z-index: 72; display: grid; place-items: center; pointer-events: none; }
+    .milestone-card {
+      text-align: center; padding: 1.5rem 2rem; border-radius: 1.5rem;
+      background: rgba(255,255,255,.85); backdrop-filter: blur(20px);
+      box-shadow: 0 20px 60px rgba(0,0,0,.25);
+      animation: overlay-pop 1.8s cubic-bezier(.22,1,.36,1) forwards;
+    }
+    html.dark .milestone-card { background: rgba(28,28,30,.85); }
+
+    @keyframes flame-flicker { 0%,100% { transform: scale(1) rotate(-3deg); } 50% { transform: scale(1.18) rotate(3deg); } }
+    .flame { display: inline-block; animation: flame-flicker 1s ease-in-out infinite; }
+
+    @media (prefers-reduced-motion: reduce) {
+      .celebrate-toast, .milestone-card, .flame, .ring-value, .fade-up { animation: none !important; transition: none !important; }
+    }
+
+    /* ---- Team-Wappen (runde Flaggen-Badges) ---- */
+    .crest { border-radius: 9999px; object-fit: cover; background: rgba(120,120,128,.15); display: inline-block; vertical-align: middle; }
+    .crest-sm { width: 22px; height: 22px; }
+    .crest-md { width: 30px; height: 30px; }
+    .crest-lg { width: 46px; height: 46px; }
+    .crest-ring { box-shadow: 0 0 0 2px rgba(255,255,255,.12), 0 2px 6px rgba(0,0,0,.25); }
+
+    /* ---- Floating Bottom-Nav (Pill, aktiver Tab als Kapsel) ---- */
+    .nav-btn { color: rgba(60,60,67,.5); }
+    html.dark .nav-btn { color: rgba(235,235,245,.5); }
+    .nav-btn.nav-active { color: #08120c !important; background: linear-gradient(135deg, #B8F23C, #10B981); box-shadow: 0 6px 16px rgba(16,185,129,.35); }
+    .nav-btn.nav-active svg { color: #08120c; }
+
+    /* ---- Pitch-Verlauf für Hero-/Featured-Karten ---- */
+    .pitch-grad { background: radial-gradient(120% 120% at 80% 0%, #1f6b3a 0%, #0e3b22 45%, #0a0f0d 100%); }
+    .glass { background: rgba(255,255,255,.08); backdrop-filter: blur(12px); border: 1px solid rgba(255,255,255,.12); }
+
+    /* Score-Typografie */
+    .score { font-variant-numeric: tabular-nums; font-weight: 800; letter-spacing: -.02em; }
+</style>
+</head>
+
+<body class="h-full bg-ink-50 text-ink-900 dark:bg-ink-950 dark:text-ink-50 font-sans selection:bg-wm-blue/20">
+
+  <!-- ================= HEADER ================= -->
+  <header class="pt-safe sticky top-0 z-30 backdrop-blur-xl bg-ink-50/80 dark:bg-ink-950/70 border-b border-black/5 dark:border-white/10">
+    <div class="max-w-md mx-auto px-5 pb-3 flex items-center justify-between gap-3">
+      <div class="flex items-center gap-3 min-w-0">
+        <div class="w-10 h-10 rounded-full grid place-items-center text-lg shrink-0 shadow-card dark:shadow-card-dark"
+             style="background:linear-gradient(135deg,#B8F23C,#10B981)">⚽️</div>
+        <div class="min-w-0">
+          <p id="header-greet" class="text-[12px] font-medium text-ink-900/50 dark:text-ink-50/50 leading-tight truncate">Willkommen 👋</p>
+          <h1 id="header-title" class="text-[20px] font-bold leading-tight truncate">Live-Ticker</h1>
+        </div>
+      </div>
+      <button data-action="toggle-theme"
+              class="grid place-items-center w-10 h-10 rounded-full bg-black/5 dark:bg-white/10 active:scale-90 transition shrink-0"
+              aria-label="Hell/Dunkel umschalten">
+        <svg class="w-5 h-5 hidden dark:block" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4 12H2M22 12h-2M5 5l1.4 1.4M17.6 17.6 19 19M19 5l-1.4 1.4M6.4 17.6 5 19"/></svg>
+        <svg class="w-5 h-5 block dark:hidden" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z"/></svg>
+      </button>
+    </div>
+  </header>
+
+  <!-- ================= MAIN ================= -->
+  <main id="app" class="max-w-md mx-auto px-5 pt-4 pb-safe min-h-full">
+    <!-- Inhalt wird per JS gerendert -->
+    <div class="py-20 text-center text-ink-900/40 dark:text-ink-50/40">Lade WM-Daten…</div>
+  </main>
+
+  <!-- ================= BOTTOM NAV (Floating Pill) ================= -->
+  <nav class="fixed bottom-0 inset-x-0 z-40 nav-safe pointer-events-none">
+    <div class="max-w-md mx-auto px-5 pt-2">
+      <div class="pointer-events-auto flex gap-2 p-1.5 rounded-full backdrop-blur-xl bg-white/85 dark:bg-ink-900/85 border border-black/5 dark:border-white/10 shadow-card dark:shadow-card-dark">
+        <button data-action="switch-tab" data-tab="ticker"
+                class="nav-btn flex-1 flex items-center justify-center gap-2 py-2.5 rounded-full transition active:scale-95">
+          <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+          <span class="text-[13px] font-semibold">Ticker</span>
+        </button>
+        <button data-action="switch-tab" data-tab="challenge"
+                class="nav-btn flex-1 flex items-center justify-center gap-2 py-2.5 rounded-full transition active:scale-95">
+          <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M13 4 8 14h4l-1 6 5-10h-4l1-6Z"/></svg>
+          <span class="text-[13px] font-semibold">Challenge</span>
+        </button>
+      </div>
+    </div>
+  </nav>
+
+  <script src="./app.js"></script>
+  <script>
+    // Service Worker registrieren (PWA / Offline-Fähigkeit)
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js').catch(() => {}));
+    }
+  </script>
+</body>
+</html>
