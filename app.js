@@ -201,6 +201,7 @@ const state = {
   runs:     loadRuns(),
   disabled: new Set(load(LS.disabled, [])),   // IDs der Spiele, deren Tore NICHT zählen
   seenBadges: new Set(load(LS.badges, [])),
+  selectedDay: null,                          // gewählter Kalender-Tag (startOfDay-Timestamp); null → heute
 };
 
 function persist() {
@@ -469,26 +470,67 @@ function viewToday() {
       </div>
     </section>` : '';
 
-  // Heutige Spiele
-  const today0 = startOfDay(Date.now());
-  const todays = state.data.matches
-    .filter((m) => startOfDay(+new Date(m.utcDate)) === today0)
-    .sort((a, b) => new Date(a.utcDate) - new Date(b.utcDate));
-  const todayList = todays.length ? `
-    <section>
-      <h3 class="text-[13px] font-bold tracking-wide text-ink-900/45 dark:text-ink-50/45 mb-2 px-1">HEUTE · ${todays.length} ${todays.length === 1 ? 'SPIEL' : 'SPIELE'}</h3>
-      <div class="rounded-xl2 glass-card overflow-hidden">
-        ${todays.map(matchRow).join('<div class="h-px bg-black/5 dark:bg-white/10 mx-4"></div>')}
-      </div>
-    </section>` : '';
-
   return `<div class="stagger space-y-6">
     ${bigTile}
     ${liveStrip}
     ${challengeSnapshot()}
-    ${todayList}
+    ${dayPicker()}
     ${sectionScorers()}
   </div>`;
+}
+
+/** Kalender-Streifen (Wochentag + Datum) + Spiele des gewählten Tages */
+const WEEKDAYS = ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa'];
+const MONTHS   = ['Jan', 'Feb', 'Mär', 'Apr', 'Mai', 'Jun', 'Jul', 'Aug', 'Sep', 'Okt', 'Nov', 'Dez'];
+
+function dayPicker() {
+  const today0 = startOfDay(Date.now());
+
+  // Alle Tage mit Spielen (Historie + Zukunft) + heute, aufsteigend sortiert
+  const daySet = new Set(state.data.matches.map((m) => startOfDay(+new Date(m.utcDate))));
+  daySet.add(today0);
+  const days = [...daySet].sort((a, b) => a - b);
+
+  // Gewählter Tag (Default heute), auf einen gültigen Tag begrenzen
+  let sel = state.selectedDay ?? today0;
+  if (!daySet.has(sel)) sel = today0;
+
+  const matchesOn = (ts) =>
+    state.data.matches.filter((m) => startOfDay(+new Date(m.utcDate)) === ts);
+
+  const pills = days.map((ts) => {
+    const d = new Date(ts);
+    const active = ts === sel;
+    const isToday = ts === today0;
+    const count = matchesOn(ts).length;
+    return `
+      <button data-action="select-day" data-day="${ts}" ${active ? 'data-active="1"' : ''}
+        class="press shrink-0 w-[60px] py-2.5 rounded-2xl flex flex-col items-center gap-0.5 ${active ? 'cal-active text-white' : 'glass-card'}">
+        <span class="text-[10px] font-bold uppercase tracking-wide ${active ? 'text-white/80' : 'text-ink-900/45 dark:text-ink-50/45'}">${WEEKDAYS[d.getDay()]}</span>
+        <span class="text-[20px] font-extrabold leading-none">${d.getDate()}</span>
+        <span class="text-[9px] font-medium ${active ? 'text-white/70' : 'text-ink-900/35 dark:text-ink-50/35'}">${MONTHS[d.getMonth()]}</span>
+        <span class="mt-1 w-1.5 h-1.5 rounded-full ${count ? (active ? 'bg-white/85' : 'bg-wm-emerald') : 'bg-transparent'}"></span>
+        ${isToday ? `<span class="text-[8px] font-bold leading-none ${active ? 'text-white/85' : 'text-wm-emerald'}">HEUTE</span>` : ''}
+      </button>`;
+  }).join('');
+
+  const dayMatches = matchesOn(sel).sort((a, b) => new Date(a.utcDate) - new Date(b.utcDate));
+  const selD = new Date(sel);
+  const heading = sel === today0 ? 'HEUTE' : `${WEEKDAYS[selD.getDay()]}, ${selD.getDate()}. ${MONTHS[selD.getMonth()]}`;
+
+  const list = dayMatches.length
+    ? `<div class="rounded-xl2 glass-card overflow-hidden">${dayMatches.map(matchRow).join('<div class="h-px bg-black/5 dark:bg-white/10 mx-4"></div>')}</div>`
+    : `<div class="rounded-xl2 glass-card p-6 text-center text-[13px] text-ink-900/45 dark:text-ink-50/45">Keine Spiele an diesem Tag</div>`;
+
+  return `
+    <section>
+      <div class="flex items-end justify-between mb-2 px-1">
+        <h3 class="text-[13px] font-bold tracking-wide text-ink-900/45 dark:text-ink-50/45">SPIELE · ${heading}</h3>
+        ${dayMatches.length ? `<span class="text-[12px] text-ink-900/35 dark:text-ink-50/35">${dayMatches.length} ${dayMatches.length === 1 ? 'Spiel' : 'Spiele'}</span>` : ''}
+      </div>
+      <div id="day-strip" class="flex gap-2 overflow-x-auto -mx-5 px-5 pb-1 mb-3">${pills}</div>
+      ${list}
+    </section>`;
 }
 
 /** Große Countdown-Kachel zum nächsten Spiel (Pitch-Verlauf) */
@@ -1056,7 +1098,12 @@ function render() {
   });
 
   stopCountdown();
-  if (state.tab === 'today') startCountdown();
+  if (state.tab === 'today') {
+    startCountdown();
+    // gewählten Kalender-Tag zentriert in den sichtbaren Bereich scrollen
+    document.querySelector('#day-strip [data-active]')
+      ?.scrollIntoView({ inline: 'center', block: 'nearest' });
+  }
   if (state.tab === 'challenge') onChallengeRendered();
 }
 
@@ -1218,6 +1265,11 @@ document.addEventListener('click', (e) => {
       persist();
       render();
       window.scrollTo({ top: 0 });
+      break;
+
+    case 'select-day':
+      state.selectedDay = Number(el.dataset.day);
+      render();
       break;
 
     case 'open-match':
