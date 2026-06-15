@@ -799,7 +799,7 @@ function viewChallenge() {
       <p class="text-[12px] text-ink-900/45 dark:text-ink-50/45 mb-4">Trag deine gerade gelaufene Strecke ein.</p>
 
       <div class="flex items-center gap-3">
-        <button data-action="add-km" data-amount="-1" aria-label="1 km abziehen"
+        <button data-action="step-km" data-amount="-1" aria-label="1 km abziehen"
                 class="w-12 h-12 rounded-full grid place-items-center text-2xl font-light bg-black/5 dark:bg-white/10 active:scale-90 transition select-none">−</button>
 
         <form data-action="submit-km" class="flex-1">
@@ -811,7 +811,7 @@ function viewChallenge() {
           </div>
         </form>
 
-        <button data-action="add-km" data-amount="1" aria-label="1 km hinzufügen"
+        <button data-action="step-km" data-amount="1" aria-label="1 km hinzufügen"
                 class="w-12 h-12 rounded-full grid place-items-center text-2xl font-light bg-black/5 dark:bg-white/10 active:scale-90 transition select-none">+</button>
       </div>
 
@@ -855,7 +855,7 @@ const stat = (label, value, color, id = '') => `
   </div>`;
 
 const quickBtn = (km) => `
-  <button data-action="add-km" data-amount="${km}"
+  <button data-action="step-km" data-amount="${km}"
           class="py-2 rounded-xl bg-black/[0.04] dark:bg-white/[0.06] text-[14px] font-semibold active:scale-95 transition">
     +${fmtKm(km)}
   </button>`;
@@ -1198,6 +1198,15 @@ function submitKmFromInput() {
   else input.value = '';
 }
 
+/** +/− und Quick-Buttons füllen NUR das Eingabefeld (committet wird erst per „Lauf hinzufügen") */
+function stepInput(delta) {
+  const input = document.getElementById('km-input');
+  if (!input) return;
+  const cur = parseFloat(input.value) || 0;
+  const next = Math.max(0, Math.round((cur + delta) * 10) / 10);
+  input.value = next === 0 ? '' : String(next);
+}
+
 document.addEventListener('click', (e) => {
   const el = e.target.closest('[data-action]');
   if (!el) return;
@@ -1232,8 +1241,8 @@ document.addEventListener('click', (e) => {
       toggleTheme();
       break;
 
-    case 'add-km':
-      addRun(parseFloat(el.dataset.amount));
+    case 'step-km':
+      stepInput(parseFloat(el.dataset.amount));
       break;
 
     case 'submit-km-btn':
