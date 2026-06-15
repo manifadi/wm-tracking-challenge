@@ -1258,66 +1258,91 @@ function sectionBracket() {
  * 6) RENDER  ·  SCREEN 2: CHALLENGE  (Sub-Tabs: Fortschritt/Verlauf/Erfolge)
  * ------------------------------------------------------------------ */
 /** Fortschrittsring + Soll/Ist/Quote */
+/** Plain Rang-Header (Badge + Name + Fortschrittsbalken zur nächsten Liga) */
+function rankHeader(ist) {
+  const lg = leagueFor(ist), en = getLang() === 'en';
+  const comm = state.community, useServer = !!(comm && comm.total_players >= 3 && comm.percentile != null);
+  const pct = useServer ? comm.percentile : topPercent(ist);
+  const nextTxt = lg.next
+    ? `${en ? 'next' : 'nächste'}: ${lg.next.names[en ? 1 : 0]} ${en ? 'at' : 'ab'} ${fmtDistU(lg.next.km)}`
+    : (en ? 'max level reached 🏁' : 'Maximal-Level 🏁');
+  return `<div class="flex items-center gap-4 px-1 mb-6">
+    <div class="shrink-0">${rankBadge(lg.idx, 66)}</div>
+    <div class="flex-1 min-w-0">
+      <div class="flex items-center gap-2">
+        <p class="font-display text-[22px] font-extrabold leading-tight truncate" style="color:${lg.cur.color}">${lg.name}</p>
+        ${pct != null ? `<span class="shrink-0 text-[10px] font-bold px-2 py-0.5 rounded-full bg-wm-emerald/12 text-wm-emerald">${t('gam.top', { pct })}</span>` : ''}
+      </div>
+      <div class="mt-2 h-2.5 rounded-full bg-black/[0.07] dark:bg-white/[0.10] overflow-hidden">
+        <div class="bar-fill h-full rounded-full" style="width:${(lg.progress * 100).toFixed(1)}%;background:linear-gradient(90deg,${lg.cur.color},#10B981)"></div>
+      </div>
+      <p class="text-[11px] mt-1.5 text-ink-900/45 dark:text-ink-50/45 truncate">${fmtDistU(ist)} · ${nextTxt}</p>
+    </div>
+  </div>`;
+}
+
+/** Kompakte Bilanz: kleiner Ring + nur das Nötigste */
 function challengeRingCard() {
   const soll = sollKm(), ist = totalRan(), open = Math.max(0, soll - ist);
   const pct = soll > 0 ? Math.min(1, ist / soll) : 0, streak = streakDays();
-  const R = 84, C = 2 * Math.PI * R, offset = C * (1 - pct), done = soll > 0 && ist >= soll;
-  const en = getLang() === 'en';
+  const R = 84, C = 2 * Math.PI * R, offset = C * (1 - pct), done = soll > 0 && ist >= soll, en = getLang() === 'en';
   return `
-    <div class="rounded-xl2 glass-card p-6 mb-5">
-      <div class="flex items-center justify-between mb-1">
-        <h3 class="text-[15px] font-bold">${t('ch.balance')}</h3>
-        ${streak > 0
-          ? `<span class="inline-flex items-center gap-1 text-[13px] font-bold px-2.5 py-1 rounded-full bg-wm-red/10 text-wm-red">
-               <span class="flame">🔥</span>${streak} ${en ? (streak === 1 ? 'day' : 'days') : (streak === 1 ? 'Tag' : 'Tage')}</span>`
-          : `<span class="text-[12px] text-ink-900/40 dark:text-ink-50/40">${t('ch.noStreak')}</span>`}
-      </div>
-      <div class="relative grid place-items-center">
-        <svg width="200" height="200" viewBox="0 0 200 200" class="-rotate-90">
-          <circle class="ring-track" cx="100" cy="100" r="${R}" fill="none" stroke-width="16"/>
-          <circle id="ring-value" class="ring-value" cx="100" cy="100" r="${R}" fill="none" stroke-width="16"
-                  stroke="${done ? '#34C759' : '#E4B458'}"
-                  stroke-dasharray="${C.toFixed(1)}" stroke-dashoffset="${offset.toFixed(1)}"/>
+    <div class="rounded-xl2 glass-card p-4 mb-5 flex items-center gap-4">
+      <div class="relative shrink-0 grid place-items-center" style="width:116px;height:116px">
+        <svg width="116" height="116" viewBox="0 0 200 200" class="-rotate-90">
+          <circle class="ring-track" cx="100" cy="100" r="${R}" fill="none" stroke-width="18"/>
+          <circle id="ring-value" class="ring-value" cx="100" cy="100" r="${R}" fill="none" stroke-width="18"
+                  stroke="${done ? '#34C759' : '#E4B458'}" stroke-dasharray="${C.toFixed(1)}" stroke-dashoffset="${offset.toFixed(1)}"/>
         </svg>
         <div class="absolute inset-0 grid place-content-center text-center">
-          <p class="text-[11px] font-semibold tracking-widest uppercase text-ink-900/45 dark:text-ink-50/45">${done ? (en ? 'Done' : 'Geschafft') : (en ? 'Open' : 'Offen')}</p>
-          <p id="c-open" class="text-[44px] font-extrabold leading-none tabular-nums ${done ? 'text-wm-green' : ''}">${fmtDist(open)}</p>
-          <p class="text-[13px] text-ink-900/45 dark:text-ink-50/45">${done ? (en ? 'all done 🎉' : 'alles gelaufen 🎉') : (en ? uLabel() + ' left' : uLabel() + ' übrig')}</p>
+          <p id="c-open" class="score text-[28px] leading-none ${done ? 'text-wm-green' : ''}">${fmtDist(open)}</p>
+          <p class="text-[10px] text-ink-900/45 dark:text-ink-50/45">${done ? (en ? 'done 🎉' : 'fertig 🎉') : uLabel()}</p>
         </div>
       </div>
-      <div class="grid grid-cols-3 gap-2 mt-5">
-        ${stat(en ? 'Target' : 'Soll', fmtDistU(soll), 'text-wm-gold')}
-        ${stat(en ? 'Done' : 'Gelaufen', fmtDistU(ist), 'text-wm-green', 'c-ist')}
-        ${stat(en ? 'Rate' : 'Quote', Math.round(pct * 100) + ' %', 'text-wm-blue', 'c-quote')}
+      <div class="flex-1 min-w-0">
+        <div class="flex items-center justify-between mb-1">
+          <h3 class="text-[14px] font-bold">${t('ch.balance')}</h3>
+          ${streak > 0 ? `<span class="inline-flex items-center gap-1 text-[12px] font-bold px-2 py-0.5 rounded-full bg-wm-red/10 text-wm-red"><span class="flame">🔥</span>${streak}</span>` : ''}
+        </div>
+        <p class="text-[13px] text-ink-900/55 dark:text-ink-50/55 leading-snug">${done ? (en ? 'All goals run! 🎉' : 'Alles gelaufen! 🎉') : `${en ? 'still' : 'noch'} <b class="text-ink-900 dark:text-ink-50">${fmtDistU(open)}</b> ${en ? 'to go' : 'übrig'}`}</p>
+        <p class="text-[12px] text-ink-900/45 dark:text-ink-50/45 mt-1 tabular-nums">${fmtDistU(ist)} / ${fmtDistU(soll)} · ${Math.round(pct * 100)} %</p>
       </div>
     </div>`;
 }
 
-/** Kilometer-Eingabe */
+/** Kilometer-Eingabe — aufgeräumt: Feld + Quick-Adds */
 function kmTrackerCard() {
   return `
-    <div class="fade-up rounded-xl2 glass-card p-5 mb-5">
-      <h3 class="text-[15px] font-bold mb-1">${t('ch.trackTitle')}</h3>
-      <p class="text-[12px] text-ink-900/45 dark:text-ink-50/45 mb-4">${t('ch.trackHint')}</p>
-      <div class="flex items-center gap-3">
-        <button data-action="step-km" data-amount="-1" aria-label="−1"
-                class="w-12 h-12 rounded-full grid place-items-center text-2xl font-light bg-black/5 dark:bg-white/10 active:scale-90 transition select-none">−</button>
-        <form data-action="submit-km" class="flex-1">
-          <div class="relative">
-            <input id="km-input" type="number" inputmode="decimal" step="0.1" min="0" placeholder="0"
-                   class="w-full text-center text-3xl font-bold tabular-nums bg-transparent outline-none py-1
-                          placeholder:text-ink-900/20 dark:placeholder:text-ink-50/20"/>
-            <span class="absolute right-1 top-1/2 -translate-y-1/2 text-sm font-medium text-ink-900/35 dark:text-ink-50/35">${uLabel()}</span>
-          </div>
-        </form>
-        <button data-action="step-km" data-amount="1" aria-label="+1"
-                class="w-12 h-12 rounded-full grid place-items-center text-2xl font-light bg-black/5 dark:bg-white/10 active:scale-90 transition select-none">+</button>
-      </div>
-      <div class="grid grid-cols-4 gap-2 mt-4">${quickBtn(0.5)} ${quickBtn(1)} ${quickBtn(3)} ${quickBtn(5)}</div>
-      <button data-action="submit-km-btn"
-              class="press w-full mt-4 py-3 rounded-xl text-white font-semibold shadow-glow"
-              style="background:linear-gradient(135deg,#10B981,#059669)">${t('ch.addRun')}</button>
+    <div class="rounded-xl2 glass-card p-5 mb-5">
+      <h3 class="text-[14px] font-bold mb-3">${t('ch.trackTitle')}</h3>
+      <form data-action="submit-km" class="flex items-center gap-2">
+        <div class="relative flex-1">
+          <input id="km-input" type="number" inputmode="decimal" step="0.1" min="0" placeholder="0"
+                 class="w-full px-4 py-3 rounded-xl bg-black/[0.04] dark:bg-white/[0.06] text-[18px] font-bold tabular-nums outline-none focus:ring-2 ring-wm-emerald/40 placeholder:text-ink-900/25 dark:placeholder:text-ink-50/25"/>
+          <span class="absolute right-3 top-1/2 -translate-y-1/2 text-sm font-medium text-ink-900/35 dark:text-ink-50/35">${uLabel()}</span>
+        </div>
+        <button data-action="submit-km-btn" type="button" aria-label="${t('ch.addRun')}"
+                class="press shrink-0 w-12 h-12 rounded-xl grid place-items-center text-white text-2xl font-light shadow-glow"
+                style="background:linear-gradient(135deg,#10B981,#059669)">+</button>
+      </form>
+      <div class="grid grid-cols-4 gap-2 mt-3">${quickBtn(0.5)} ${quickBtn(1)} ${quickBtn(3)} ${quickBtn(5)}</div>
     </div>`;
+}
+
+/** Wochenziel (kompakt) */
+function weeklyGoalCard() {
+  const goal = Math.max(1, Number(state.settings.weeklyGoalKm) || DEFAULT_SETTINGS.weeklyGoalKm);
+  const wk = weeklyKm(), wkPct = Math.min(1, wk / goal), wkDone = wk >= goal;
+  return `<div class="rounded-xl2 glass-card p-5 mb-5">
+    <div class="flex items-center justify-between mb-1.5">
+      <h3 class="text-[14px] font-bold">${t('gam.weekly')}</h3>
+      <span class="text-[12px] font-bold tabular-nums ${wkDone ? 'text-wm-green' : 'text-ink-900/55 dark:text-ink-50/55'}">${fmtDist(wk)} / ${fmtDistU(goal)}</span>
+    </div>
+    <div class="h-2.5 rounded-full bg-black/[0.06] dark:bg-white/[0.08] overflow-hidden">
+      <div class="bar-fill h-full rounded-full" style="width:${(wkPct * 100).toFixed(1)}%;background:linear-gradient(90deg,#10B981,#34C759)"></div>
+    </div>
+    <p class="text-[12px] mt-2 font-medium ${wkDone ? 'text-wm-green' : 'text-ink-900/55 dark:text-ink-50/55'}">${wkDone ? t('gam.weekly.done') : t('gam.weekly.left', { km: fmtDist(Math.max(0, goal - wk)) })}</p>
+  </div>`;
 }
 
 /** „Spiele werten" (welche Partien zählen zum Soll) */
@@ -1394,10 +1419,10 @@ function leaderboardCard() {
   </section>`;
 }
 
-function chProgress()    { const ist = totalRan(), soll = sollKm(); return `${challengeRingCard()}${sectionGamification(ist, soll)}${leaderboardCard()}${sectionJourney(ist)}${kmTrackerCard()}`; }
+function chProgress()    { const ist = totalRan(); return `${rankHeader(ist)}${challengeRingCard()}${kmTrackerCard()}${sectionJourney(ist)}`; }
 function chHistory()     { return `${sectionChart()}${sectionHistory()}`; }
 function chAchievements() {
-  return `${sectionBadges(snapshot())}${matchWeightingCard()}
+  return `${leaderboardCard()}${weeklyGoalCard()}${sectionBadges(snapshot())}${matchWeightingCard()}
     <button data-action="reset" class="w-full py-3 rounded-xl text-wm-red font-medium text-[14px] active:opacity-60 transition mb-2">${t('set.reset')}</button>`;
 }
 
@@ -1661,7 +1686,7 @@ function sectionBadges(snap) {
 }
 
 /* ===================== SCREEN: EINSTELLUNGEN ===================== */
-const APP_VERSION = '1.11.0';
+const APP_VERSION = '1.12.0';
 
 /** Segment-Control: Optionen [{v,label}], aktiver Wert val, Aktion action */
 function segmented(action, val, options) {
@@ -1877,35 +1902,53 @@ let matchSheetTab = 'lineup';
 function teamColor(code) { let h = 0; const s = 'j' + (code || ''); for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0; return `hsl(${h % 360} 60% 46%)`; }
 const lastNameOf = (n) => { const p = String(n || '').trim().split(/\s+/); return p[p.length - 1] || ''; };
 
-function jersey(color, number, size) {
+/* Nationale Trikotfarben [Trikot, Nummer] (Fallback: deterministische Farbe) */
+const NAT_COLOR = {
+  ESP:['#C8102E','#fff'], GER:['#e9eef3','#1a1a1a'], BRA:['#F7DF00','#0a7b3e'], ARG:['#86c5e8','#0b3b7a'],
+  FRA:['#1f3a93','#fff'], ENG:['#eef2f7','#1d3fa8'], POR:['#aa151b','#fff'], NED:['#f36c21','#fff'],
+  BEL:['#c8102e','#111'], CRO:['#d80000','#fff'], MAR:['#c1272d','#0a6b3a'], JPN:['#0b1b5c','#fff'],
+  KOR:['#cd2e3a','#fff'], USA:['#1a2b6b','#fff'], MEX:['#006847','#fff'], CAN:['#d52b1e','#fff'],
+  SEN:['#1c8a42','#fff'], URU:['#4aa3dd','#0b3b7a'], COL:['#fcd116','#0033a0'], SUI:['#d52b1e','#fff'],
+  DEN:['#c60c30','#fff'], SRB:['#c6363c','#fff'], POL:['#e8edf2','#d4213d'], AUS:['#f4c20d','#0a6b3a'],
+  KSA:['#0a7b3e','#fff'], RSA:['#0a7b3e','#fcd116'], CZE:['#d7141a','#fff'], CPV:['#1c4f9c','#fff'],
+  EGY:['#c8102e','#fff'], NOR:['#c8102e','#fff'], AUT:['#ed2939','#fff'], ECU:['#ffd100','#0033a0'],
+  IRN:['#e9eef3','#c8102e'], GHA:['#0a7b3e','#fcd116'], NGA:['#0a7b3e','#fff'], CMR:['#0a7b3e','#fcd116'],
+  CIV:['#f36c21','#fff'], TUN:['#e70013','#fff'], ALG:['#0a7b3e','#fff'], QAT:['#8a1538','#fff'],
+  ITA:['#1b458f','#fff'], PER:['#d91023','#fff'], PAR:['#d52b1e','#fff'], JOR:['#e70013','#fff'],
+  UZB:['#1eb53a','#fff'], JAM:['#fcd116','#0a7b3e'], PAN:['#d21034','#fff'], NZL:['#e9eef3','#111'],
+  TUR:['#e30a17','#fff'], UKR:['#ffd700','#0057b7'], CRC:['#c8102e','#fff'], HON:['#0073cf','#fff'],
+};
+function kitColor(code) { const c = NAT_COLOR[code]; return c ? { fill: c[0], text: c[1] } : { fill: teamColor(code), text: '#fff' }; }
+
+function jersey(kit, number, size) {
   const s = size || 38;
   return `<span class="relative inline-block" style="width:${s}px;height:${s}px">
     <svg viewBox="0 0 48 48" width="${s}" height="${s}" style="display:block;filter:drop-shadow(0 1px 2px rgba(0,0,0,.45))">
-      <path d="M16 4 L8 8 L3 18 L11 22 L13 16 L13 44 L35 44 L35 16 L37 22 L45 18 L40 8 L32 4 C29 9 19 9 16 4 Z" fill="${color}" stroke="rgba(255,255,255,.7)" stroke-width="1.5" stroke-linejoin="round"/>
+      <path d="M16 4 L8 8 L3 18 L11 22 L13 16 L13 44 L35 44 L35 16 L37 22 L45 18 L40 8 L32 4 C29 9 19 9 16 4 Z" fill="${kit.fill}" stroke="rgba(255,255,255,.7)" stroke-width="1.5" stroke-linejoin="round"/>
     </svg>
-    <span class="absolute inset-x-0 font-extrabold text-white text-center" style="bottom:${Math.round(s * 0.1)}px;font-size:${Math.round(s * 0.38)}px;text-shadow:0 1px 2px rgba(0,0,0,.5)">${esc(number)}</span>
+    <span class="absolute inset-x-0 font-extrabold text-center" style="color:${kit.text};bottom:${Math.round(s * 0.1)}px;font-size:${Math.round(s * 0.38)}px;text-shadow:0 1px 1px rgba(0,0,0,.25)">${esc(number)}</span>
   </span>`;
 }
-function pitchChip(p, xPct, yPct, color) {
+function pitchChip(p, xPct, yPct, kit) {
   return `<div class="absolute flex flex-col items-center" style="left:${xPct.toFixed(1)}%;top:${yPct.toFixed(1)}%;transform:translate(-50%,-50%);width:66px">
-    ${jersey(color, p.num, 38)}
+    ${jersey(kit, p.num, 38)}
     <span class="mt-0.5 text-[11px] font-semibold text-white leading-tight text-center truncate w-[64px]" style="text-shadow:0 1px 3px rgba(0,0,0,.9)">${esc(lastNameOf(p.name))}</span>
   </div>`;
 }
-function placeXI(xi, lines, isHome, color) {
+function placeXI(xi, lines, isHome, kit) {
   const nL = lines.length, span = nL > 1 ? 0.36 / (nL - 1) : 0;
   return xi.map((p) => {
     const y = isHome ? (0.95 - p.li * span) : (0.05 + p.li * span);
     const m = p.count >= 5 ? 0.12 : p.count === 4 ? 0.16 : 0.20;
     const x = p.count <= 1 ? 0.5 : m + (p.j / (p.count - 1)) * (1 - 2 * m);
-    return pitchChip(p, x * 100, y * 100, color);
+    return pitchChip(p, x * 100, y * 100, kit);
   }).join('');
 }
-function benchRow(label, squad, color) {
+function benchRow(label, squad, kit) {
   if (!squad.subs || !squad.subs.length) return '';
   const chips = squad.subs.map((p) => `
     <div class="flex flex-col items-center shrink-0 w-[54px]">
-      ${jersey(color, p.num, 30)}
+      ${jersey(kit, p.num, 30)}
       <span class="mt-1 text-[9px] font-medium leading-none text-center truncate w-[52px]">${esc(lastNameOf(p.name))}</span>
     </div>`).join('');
   return `<div class="mt-3">
@@ -1916,7 +1959,7 @@ function benchRow(label, squad, color) {
 function renderLineupTab(m, detail) {
   const L = detail.lineups; if (!L || !L.home) return '';
   const h = team(m.home), a = team(m.away);
-  const hc = teamColor(h.code), ac = teamColor(a.code), H = L.home, A = L.away;
+  const hc = kitColor(h.code), ac = kitColor(a.code), H = L.home, A = L.away;
   return `
     <div class="flex items-center justify-between text-[12px] font-semibold mb-2 px-1">
       <span class="inline-flex items-center gap-1.5">${crest(h, 'crest-sm')} ${esc(H.formation)}</span>
