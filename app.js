@@ -1644,7 +1644,7 @@ function sectionBadges(snap) {
 }
 
 /* ===================== SCREEN: EINSTELLUNGEN ===================== */
-const APP_VERSION = '1.8.0';
+const APP_VERSION = '1.8.1';
 
 /** Segment-Control: Optionen [{v,label}], aktiver Wert val, Aktion action */
 function segmented(action, val, options) {
@@ -2199,19 +2199,20 @@ function openMatchSheet(id) {
 }
 
 function closeSheet() {
+  currentSheetMatch = null;   // Cleanup zuerst (auch wenn das Sheet per Drag schon weg ist)
   const s = document.getElementById('match-sheet');
   if (!s) return;
-  currentSheetMatch = null;
   s.querySelector('.sheet-backdrop')?.classList.add('closing');
   s.querySelector('.sheet')?.classList.add('closing');
   setTimeout(() => s.remove(), 260);
 }
 
 /**
- * Macht ein Bottom-Sheet per Griff (data-drag-handle/.grabber) ziehbar:
- *  - nach unten ziehen → folgt dem Finger, Backdrop blendet aus
- *  - weit/schnell genug → schließen (closeFn), sonst zurückschnappen
- *  - leicht nach oben ziehen → Sheet auf volle Höhe „aufziehen"
+ * Natives Bottom-Sheet-Gefühl per Griff (data-drag-handle/.grabber):
+ *  - großzügige Grifffläche (CSS ::before)
+ *  - nach unten ziehen → folgt dem Finger; weit ODER schneller Swipe → schließen
+ *  - nach oben ziehen → Sheet wird größer (bis ~96 vh), schnappt beim Loslassen ein
+ *  - geschwindigkeitsbasiert (Flick) wie bei iOS-Sheets
  */
 function makeSheetDraggable(root, closeFn) {
   const sheet = root.querySelector('.sheet');
@@ -2221,19 +2222,39 @@ function makeSheetDraggable(root, closeFn) {
   handle.style.touchAction = 'none';
   handle.style.cursor = 'grab';
 
-  let startY = 0, curDy = 0, height = 0, dragging = false;
+  const VH = () => window.innerHeight;
+  let startY = 0, curDy = 0, baseH = 0, dragging = false;
+  let lastY = 0, lastT = 0, vel = 0;     // vel: px/ms, + = nach unten
+  let committedH = '';                    // gemerkte (vergrößerte) Höhe
+
+  const snapBack = () => {
+    sheet.style.transition = 'transform .28s cubic-bezier(.22,1,.36,1), height .28s cubic-bezier(.22,1,.36,1)';
+    sheet.style.transform = 'translateY(0)';
+    sheet.style.height = committedH || '';
+    if (backdrop) backdrop.style.opacity = '';
+    setTimeout(() => { sheet.style.transition = ''; }, 300);
+  };
+
+  const dragClose = () => {
+    sheet.style.transition = 'transform .24s cubic-bezier(.4,0,1,1)';
+    sheet.style.transform = 'translateY(110%)';
+    if (backdrop) { backdrop.style.transition = 'opacity .24s'; backdrop.style.opacity = '0'; }
+    setTimeout(() => { try { root.remove(); } catch (e) {} closeFn(); }, 220);
+  };
 
   const onMove = (e) => {
     if (!dragging) return;
     const y = e.clientY != null ? e.clientY : (e.touches && e.touches[0].clientY);
+    const now = e.timeStamp || Date.now();
+    if (now > lastT) { vel = (y - lastY) / (now - lastT); lastY = y; lastT = now; }
     curDy = y - startY;
-    if (curDy >= 0) {
+    if (curDy >= 0) {                       // nach unten: verschieben + Backdrop ausblenden
+      sheet.style.height = committedH || '';
       sheet.style.transform = `translateY(${curDy}px)`;
-      if (backdrop) backdrop.style.opacity = String(Math.max(0, 1 - curDy / (height || 500)));
-    } else {
-      // nach oben: volle Höhe freigeben (sanft)
-      sheet.style.transform = `translateY(${Math.max(curDy, -24)}px)`;
-      sheet.style.maxHeight = '94vh';
+      if (backdrop) backdrop.style.opacity = String(Math.max(0, 1 - curDy / (baseH || 500)));
+    } else {                                // nach oben: vergrößern
+      sheet.style.transform = 'translateY(0)';
+      sheet.style.height = Math.min(VH() * 0.96, baseH - curDy) + 'px';
     }
   };
 
@@ -2242,24 +2263,27 @@ function makeSheetDraggable(root, closeFn) {
     dragging = false;
     window.removeEventListener('pointermove', onMove);
     window.removeEventListener('pointerup', end);
-    sheet.style.transition = 'transform .26s cubic-bezier(.22,1,.36,1)';
-    if (curDy > Math.max(140, height * 0.28)) {
-      closeFn();
-    } else {
-      sheet.style.transform = 'translateY(0)';
-      if (backdrop) backdrop.style.opacity = '';
-      setTimeout(() => { sheet.style.transition = ''; sheet.style.transform = ''; }, 280);
+    window.removeEventListener('pointercancel', end);
+    // Schnell nach unten ODER weit genug → schließen
+    if (curDy > 0 && (vel > 0.5 || curDy > Math.max(110, baseH * 0.25))) { dragClose(); return; }
+    // Schnell nach oben ODER weit genug → vergrößert lassen
+    if (curDy < 0 && (vel < -0.5 || curDy < -70)) {
+      committedH = Math.round(Math.min(VH() * 0.96, baseH - curDy)) + 'px';
     }
+    snapBack();
   };
 
   const onDown = (e) => {
     dragging = true;
-    startY = e.clientY != null ? e.clientY : (e.touches && e.touches[0].clientY);
-    curDy = 0;
-    height = sheet.getBoundingClientRect().height;
+    startY = lastY = e.clientY != null ? e.clientY : (e.touches && e.touches[0].clientY);
+    lastT = e.timeStamp || Date.now();
+    vel = 0; curDy = 0;
+    baseH = sheet.getBoundingClientRect().height;
+    sheet.style.maxHeight = '96vh';        // erlaubt Vergrößern über die Standard-Kappung hinaus
     sheet.style.transition = 'none';
     window.addEventListener('pointermove', onMove);
     window.addEventListener('pointerup', end);
+    window.addEventListener('pointercancel', end);
   };
 
   handle.addEventListener('pointerdown', onDown);

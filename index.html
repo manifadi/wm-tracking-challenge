@@ -192,7 +192,10 @@
     .sheet { position: fixed; left: 0; right: 0; bottom: 0; z-index: 81; animation: sheet-up .42s cubic-bezier(.22,1,.36,1); }
     .sheet-backdrop.closing { animation: fade-in .2s ease reverse forwards; }
     .sheet.closing { animation: sheet-up .28s cubic-bezier(.4,0,1,1) reverse forwards; }
-    .grabber { width: 38px; height: 5px; border-radius: 999px; background: rgba(120,120,128,.4); margin: 10px auto 4px; }
+    /* Griff: schmaler Balken, aber großzügige Touch-Fläche (::before) zum Ziehen/Schließen */
+    .grabber { position: relative; width: 42px; height: 5px; border-radius: 999px; background: rgba(120,120,128,.45); margin: 9px auto 4px; touch-action: none; cursor: grab; }
+    .grabber:active { cursor: grabbing; }
+    .grabber::before { content: ''; position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: 200px; height: 44px; }
 
     /* Skeleton-Shimmer (statt Spinner) */
     @keyframes shimmer { 100% { transform: translateX(100%); } }
