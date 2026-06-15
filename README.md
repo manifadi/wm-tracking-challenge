@@ -4,6 +4,34 @@ Mobile-first PWA zur Fitness-Challenge während der Fußball-WM 2026.
 
 > **Die Regel:** Für jedes bei der WM geschossene Tor läufst du **1 km**.
 
+> 📍 **Produktrichtung:** Vision, Roadmap & Setup liegen in [`docs/`](docs/) –
+> [`PRODUCT_VISION.md`](docs/PRODUCT_VISION.md), [`ROADMAP.md`](docs/ROADMAP.md),
+> [`SETUP_SUPABASE.md`](docs/SETUP_SUPABASE.md).
+>
+> **Neu in v1.1 (Phase 1+2):** Rang/Liga & „Top X %"-Einordnung, Wochenziel,
+> Läufe nachträglich bearbeiten (Distanz/Datum/Zeit), Welcome-/Onboarding-Screen
+> (Challenge- vs. Info-Modus), Einstellungen (Sprache nach Handy, Theme, Einheit,
+> Challenge an/aus), ziehbares Spiel-Detail-Sheet, i18n (DE/EN).
+>
+> **Neu in v1.2 (Phase 3):** Spiel-Detail-Sheet mit Sub-Tabs **Aufstellung ·
+> Statistik · Verlauf · Info** – visuelle Aufstellung auf dem Platz mit runden
+> Spieler-Avataren (Live-Foto / Initialen-Fallback), Statistiken (Ballbesitz, Schüsse,
+> Pässe …) und Tor-/Event-Verlauf. Live über den Worker-Endpoint
+> `GET /api/match?fixture=ID`, sonst deterministische Demo-Daten (offline-fähig).
+>
+> **Neu in v1.3 (UI/UX-Redesign):** Hybrid-Look (heller, cleaner Body + immersive
+> Hero-Cards). Aufgeräumte Informationsarchitektur: **Challenge mit Sub-Tabs**
+> (Fortschritt/Verlauf/Erfolge), **Filter-Chips** auf Spielplan (Alle/Live/Heute/
+> Kommend/Beendet) und **Gruppen-Chips** in der Tabelle, Home als Dashboard
+> (Top-3-Torschützen statt Top-10), konsistente Sektions-Titel & durchgängigere
+> DE/EN-Übersetzung. Kein Endlos-Scroll mehr.
+>
+> **Neu in v1.4 (Phase 4 – Login & Cloud-Sync):** Optionales **Supabase**-Backend.
+> Login/Registrieren/Magic-Link/Passwort-Reset (Einstellungen → Konto), geräte­
+> übergreifender **Sync** von Läufen & Einstellungen (offline-first, RLS-gesichert).
+> **Ruhend, bis `CONFIG.supabase` (URL + anon-Key) gesetzt ist** → ohne Setup läuft
+> die App unverändert rein lokal. Anleitung: [`docs/SETUP_SUPABASE.md`](docs/SETUP_SUPABASE.md).
+
 ## Features
 
 **Screen 1 — Live-Ticker**

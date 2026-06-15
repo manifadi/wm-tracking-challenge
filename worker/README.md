@@ -56,5 +56,14 @@ Dann in `wrangler.toml` `DEMO_MODE = "false"` setzen und erneut `npx wrangler de
 - Sonst → Cache 600 s (Ergebnisse ändern sich kaum).
 - Fällt eine API aus → letzter guter Stand bzw. Demo (kein Absturz).
 
-## Endpoint
-`GET /api/matches` → `{ competition, groups, matches }` (exakt das App-Schema).
+## Endpoints
+- `GET /api/matches` → `{ competition, groups, matches }` (exakt das App-Schema).
+- `GET /api/match?fixture=ID` → `{ lineups:{home,away}, stats, events, predicted }`
+  (Aufstellung mit Spieler-Fotos, Statistik & Verlauf für das Detail-Sheet).
+  Cache 120 s. Ohne API-Football-Key / im Demo-Modus kommt `{ lineups: null }` —
+  die App nutzt dann ihren eigenen, deterministischen Demo-Fallback.
+
+> Die `fixtureId` für `/api/match` stammt aktuell aus dem Live-Overlay (deckt also
+> **laufende** Spiele ab). Für beendete/geplante Partien greift der App-seitige
+> Demo-Fallback; volle ID-Zuordnung wäre ein optionaler Follow-up über den
+> API-Football-`fixtures`-Endpoint.

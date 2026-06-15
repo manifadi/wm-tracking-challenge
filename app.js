@@ -20,6 +20,13 @@ const CONFIG = {
   apiBase: 'https://wm-ticker.manuel-fades50.workers.dev',   // Produktions-Worker (Live-Daten). Lokal testen: 'http://localhost:8787'
   pollLiveMs: 60000,           // Abfrage-Intervall, wenn mind. ein Spiel LÄUFT
   pollIdleMs: 600000,          // Abfrage-Intervall sonst (Ergebnisse ändern sich selten)
+
+  // Supabase (Login & Cloud-Sync). Leer = deaktiviert → App läuft rein lokal wie bisher.
+  // Werte aus dem Supabase-Dashboard (Project Settings → API) eintragen:
+  supabase: {
+    url:     'https://euqbexhqamznbyykrhtx.supabase.co',
+    anonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImV1cWJleGhxYW16bmJ5eWtyaHR4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE1MzA3ODQsImV4cCI6MjA5NzEwNjc4NH0.RjfKqLfe1fnuQ7Bz7v5YDEchKfKAyTVw8hxt26IfU_w',
+  },
 };
 
 /* ------------------------------------------------------------------ *
@@ -168,6 +175,8 @@ const LS = {
   tickerView: 'wm-challenge:tickerView',     // 'matches' | 'table'
   theme:    'wm-challenge:theme',
   install:  'wm-challenge:installDismissed',
+  settings: 'wm-challenge:settings',         // { lang, unit, challengeEnabled, notifications, weeklyGoalKm }
+  onboarded:'wm-challenge:onboarded',        // true, sobald der Welcome-Screen durchlaufen wurde
 };
 
 function load(key, fallback) {
@@ -194,6 +203,201 @@ function loadTab() {
   return VALID_TABS.includes(t) ? t : 'today';   // alte Werte ('ticker') → Heute
 }
 
+/* ------------------------------------------------------------------ *
+ * 2b) EINSTELLUNGEN + i18n (Sprache folgt dem Handy, manuell überschreibbar)
+ * ------------------------------------------------------------------ */
+const SUPPORTED_LANGS = ['de', 'en'];
+
+/** Sprache aus der Handy-/Browser-Einstellung ableiten (Default: Deutsch) */
+function detectLang() {
+  const navLangs = (navigator.languages && navigator.languages.length)
+    ? navigator.languages : [navigator.language || 'de'];
+  for (const l of navLangs) {
+    const base = String(l).slice(0, 2).toLowerCase();
+    if (SUPPORTED_LANGS.includes(base)) return base;
+  }
+  return 'de';
+}
+
+const DEFAULT_SETTINGS = {
+  lang: null,                 // null → automatisch (detectLang); sonst 'de' | 'en'
+  unit: 'km',                 // 'km' | 'mi'
+  challengeEnabled: true,     // false = reiner Info-Modus (Challenge-Tab ausgeblendet)
+  notifications: false,       // Platzhalter bis Phase 6 (Web-Push)
+  weeklyGoalKm: 15,           // persönliches Wochenziel
+  nickname: '',               // Anzeigename in der Rangliste (optional)
+  leaderboardOptin: false,    // Name in der Rangliste zeigen (sonst „Läufer #")
+};
+
+function loadSettings() {
+  const s = load(LS.settings, {});
+  return { ...DEFAULT_SETTINGS, ...(s && typeof s === 'object' ? s : {}) };
+}
+
+/** Aktuell aktive Sprache (Override oder Auto-Erkennung) */
+const getLang = () => {
+  const l = state.settings && state.settings.lang;
+  return SUPPORTED_LANGS.includes(l) ? l : detectLang();
+};
+
+/* Wörterbuch. Bestehende deutsche UI bleibt vorerst direkt im Code; neue
+ * Oberflächen (Onboarding, Einstellungen, Gamification, Lauf-Editor) sowie die
+ * Navigation/Headertitel laufen über t() und sind de/en vollständig übersetzt. */
+const I18N = {
+  de: {
+    'nav.today': 'Heute', 'nav.schedule': 'Spielplan', 'nav.table': 'Tabelle', 'nav.challenge': 'Challenge',
+    'title.today': 'Übersicht', 'title.schedule': 'Spielplan', 'title.table': 'Tabellen',
+    'title.challenge': 'Challenge', 'title.settings': 'Einstellungen',
+    'greet.night': 'Gute Nacht', 'greet.morning': 'Guten Morgen', 'greet.day': 'Guten Tag', 'greet.evening': 'Guten Abend',
+    'common.save': 'Speichern', 'common.cancel': 'Abbrechen', 'common.delete': 'Löschen', 'common.close': 'Schließen',
+    'common.back': 'Zurück', 'common.continue': 'Weiter', 'common.on': 'An', 'common.off': 'Aus', 'common.auto': 'Automatisch',
+    'onb.tagline': 'Lauf dir die WM 2026.',
+    'onb.rule': 'Die Regel: Für jedes WM-Tor läufst du 1 km.',
+    'onb.f1.t': 'Live dabei', 'onb.f1.d': 'Ticker, Tabellen & Spiel-Details in Echtzeit.',
+    'onb.f2.t': 'In Bewegung', 'onb.f2.d': 'Jedes Tor wird zu deinen Kilometern.',
+    'onb.f3.t': 'Motiviert', 'onb.f3.d': 'Fortschritt, Erfolge & deine Einordnung.',
+    'onb.q': 'Wie möchtest du starten?',
+    'onb.challenge.t': 'Challenge mitmachen', 'onb.challenge.d': 'Tore tracken & Kilometer laufen.',
+    'onb.info.t': 'Nur Infos', 'onb.info.d': 'Nur Ticker & Ergebnisse – ohne Challenge.',
+    'onb.hint': 'Du kannst das jederzeit in den Einstellungen ändern.',
+    'set.appearance': 'Darstellung', 'set.language': 'Sprache', 'set.theme': 'Erscheinungsbild',
+    'set.theme.system': 'System', 'set.theme.light': 'Hell', 'set.theme.dark': 'Dunkel',
+    'set.unit': 'Einheit', 'set.challenge': 'Challenge', 'set.challenge.on': 'Lauf-Challenge aktiv',
+    'set.challenge.d': 'Aus = reiner Info-Modus, Challenge-Tab ausgeblendet.',
+    'set.weeklygoal': 'Wochenziel', 'set.notifications': 'Benachrichtigungen',
+    'set.notifications.d': 'Anpfiff, Tore & Ziel-Erinnerungen (bald verfügbar).',
+    'set.account': 'Konto', 'set.account.soon': 'Login & Cloud-Sync kommen bald.',
+    'set.data': 'Daten', 'set.reset': 'Fortschritt zurücksetzen', 'set.about': 'Über',
+    'set.version': 'Version', 'set.lang.auto': 'Automatisch (Handy)',
+    'run.edit': 'Lauf bearbeiten', 'run.distance': 'Distanz', 'run.date': 'Datum', 'run.time': 'Uhrzeit',
+    'gam.title': 'Dein Rang', 'gam.level': 'Level', 'gam.top': 'Top {pct} %',
+    'gam.top.sub': 'der Challenge-Läufer', 'gam.weekly': 'Wochenziel', 'gam.weekly.left': 'noch {km} km diese Woche',
+    'gam.weekly.done': 'Wochenziel geschafft! 🎉',
+    'gam.m.ahead': 'Stark – du bist deinem Soll voraus! 🔥',
+    'gam.m.ontrack': 'Gut dabei – bleib dran! 💪', 'gam.m.behind': 'Zeit für eine Runde – {km} km offen. 👟',
+    'gam.m.start': 'Trag deinen ersten Lauf ein und leg los! 🚀',
+    'md.lineup': 'Aufstellung', 'md.stats': 'Statistik', 'md.events': 'Verlauf', 'md.info': 'Info',
+    'md.probable': 'Voraussichtliche Aufstellung', 'md.coach': 'Trainer', 'md.bench': 'Ersatzbank',
+    'md.noLineup': 'Aufstellung noch nicht verfügbar.', 'md.noStats': 'Noch keine Statistik – Spiel nicht gestartet.',
+    'md.noEvents': 'Noch keine Ereignisse.',
+    'md.demo': 'Demo-Daten – live kommen echte Aufstellungen & Statistiken.',
+    'st.possession': 'Ballbesitz', 'st.shots': 'Torschüsse', 'st.shotsOn': 'aufs Tor', 'st.passes': 'Pässe',
+    'st.passAcc': 'Passquote', 'st.corners': 'Ecken', 'st.fouls': 'Fouls', 'st.yellow': 'Gelbe Karten',
+    'st.offsides': 'Abseits', 'st.saves': 'Paraden',
+    'ev.goal': 'Tor', 'ev.penalty': 'Elfmeter', 'ev.owngoal': 'Eigentor', 'ev.yellow': 'Gelb', 'ev.red': 'Rot', 'ev.subst': 'Wechsel',
+    'pos.gk': 'TOR', 'pos.def': 'ABW', 'pos.mid': 'MIT', 'pos.fwd': 'ANG',
+    'ch.progress': 'Fortschritt', 'ch.history': 'Verlauf', 'ch.ach': 'Erfolge',
+    'f.all': 'Alle', 'f.live': 'Live', 'f.today': 'Heute', 'f.upcoming': 'Kommend', 'f.finished': 'Beendet',
+    'sec.scorers': 'Torschützenkönige', 'sec.allMatches': 'Alle Spiele', 'sec.seeAll': 'Alle anzeigen',
+    'sec.standings': 'Tabellen', 'sec.bracket': 'K.-o.-Runde', 'sec.weighting': 'Spiele werten',
+    'sec.weighting.d': 'Schalter aus = Tore dieses Spiels zählen nicht zum Soll.',
+    'sec.noMatches': 'Keine Spiele in dieser Auswahl.',
+    'grp': 'Gruppe', 'tbl.team': 'Team', 'tbl.pl': 'Sp', 'tbl.diff': 'Diff', 'tbl.pts': 'Pkt',
+    'ch.balance': 'Deine Bilanz', 'ch.noStreak': 'noch kein Streak',
+    'ch.trackTitle': 'Kilometer eintragen', 'ch.trackHint': 'Trag deine gerade gelaufene Strecke ein.',
+    'ch.addRun': 'Lauf hinzufügen', 'today.challenge': 'Deine Challenge', 'today.open': 'Öffnen',
+    'auth.signin': 'Anmelden', 'auth.signup': 'Registrieren', 'auth.email': 'E-Mail', 'auth.password': 'Passwort',
+    'auth.magic': 'Stattdessen Magic-Link senden', 'auth.forgot': 'Passwort vergessen?', 'auth.logout': 'Abmelden',
+    'auth.signedInAs': 'Angemeldet als', 'auth.cloudHint': 'Melde dich an, um deine Läufe & Einstellungen geräteübergreifend zu sichern.',
+    'auth.checkEmail': 'Fast geschafft – bestätige deine E-Mail-Adresse. 📧',
+    'auth.magicSent': 'Magic-Link gesendet – check deine E-Mails. 📧', 'auth.resetSent': 'Link zum Zurücksetzen gesendet. 📧',
+    'auth.needFields': 'Bitte E-Mail und Passwort eingeben.', 'auth.needEmail': 'Bitte zuerst die E-Mail eingeben.',
+    'auth.syncing': 'Synchronisiere …', 'auth.synced': 'Cloud-Sync aktiv', 'auth.busy': 'Bitte warten …',
+    'auth.welcome': 'Cloud-Sync', 'auth.haveAccount': 'Schon dabei?', 'auth.title': 'Anmelden oder registrieren',
+    'rank.title': 'Rangliste', 'rank.players': 'von {n}', 'rank.you': 'Du', 'rank.total': 'Gesamt',
+    'rank.signin': 'Melde dich an, um in der Rangliste mitzulaufen.',
+    'gam.top.real': 'von {n} Läufern', 'set.nickname': 'Anzeigename (Rangliste)',
+    'set.leaderboard': 'In Rangliste anzeigen', 'set.leaderboard.d': 'Zeigt deinen Namen statt „Läufer #". Sonst bleibst du anonym.',
+  },
+  en: {
+    'nav.today': 'Today', 'nav.schedule': 'Matches', 'nav.table': 'Standings', 'nav.challenge': 'Challenge',
+    'title.today': 'Overview', 'title.schedule': 'Matches', 'title.table': 'Standings',
+    'title.challenge': 'Challenge', 'title.settings': 'Settings',
+    'greet.night': 'Good night', 'greet.morning': 'Good morning', 'greet.day': 'Hello', 'greet.evening': 'Good evening',
+    'common.save': 'Save', 'common.cancel': 'Cancel', 'common.delete': 'Delete', 'common.close': 'Close',
+    'common.back': 'Back', 'common.continue': 'Continue', 'common.on': 'On', 'common.off': 'Off', 'common.auto': 'Automatic',
+    'onb.tagline': 'Run your way through the 2026 World Cup.',
+    'onb.rule': 'The rule: for every World Cup goal, you run 1 km.',
+    'onb.f1.t': 'Live coverage', 'onb.f1.d': 'Ticker, standings & match details in real time.',
+    'onb.f2.t': 'On the move', 'onb.f2.d': 'Every goal turns into your kilometres.',
+    'onb.f3.t': 'Motivated', 'onb.f3.d': 'Progress, achievements & your ranking.',
+    'onb.q': 'How would you like to start?',
+    'onb.challenge.t': 'Join the challenge', 'onb.challenge.d': 'Track goals & run kilometres.',
+    'onb.info.t': 'Info only', 'onb.info.d': 'Just ticker & results – no challenge.',
+    'onb.hint': 'You can change this anytime in settings.',
+    'set.appearance': 'Appearance', 'set.language': 'Language', 'set.theme': 'Theme',
+    'set.theme.system': 'System', 'set.theme.light': 'Light', 'set.theme.dark': 'Dark',
+    'set.unit': 'Unit', 'set.challenge': 'Challenge', 'set.challenge.on': 'Running challenge active',
+    'set.challenge.d': 'Off = info-only mode, challenge tab hidden.',
+    'set.weeklygoal': 'Weekly goal', 'set.notifications': 'Notifications',
+    'set.notifications.d': 'Kick-off, goals & goal reminders (coming soon).',
+    'set.account': 'Account', 'set.account.soon': 'Login & cloud sync coming soon.',
+    'set.data': 'Data', 'set.reset': 'Reset progress', 'set.about': 'About',
+    'set.version': 'Version', 'set.lang.auto': 'Automatic (device)',
+    'run.edit': 'Edit run', 'run.distance': 'Distance', 'run.date': 'Date', 'run.time': 'Time',
+    'gam.title': 'Your rank', 'gam.level': 'Level', 'gam.top': 'Top {pct}%',
+    'gam.top.sub': 'of all challengers', 'gam.weekly': 'Weekly goal', 'gam.weekly.left': '{km} km left this week',
+    'gam.weekly.done': 'Weekly goal reached! 🎉',
+    'gam.m.ahead': 'Great – you’re ahead of target! 🔥',
+    'gam.m.ontrack': 'Nice pace – keep it up! 💪', 'gam.m.behind': 'Time for a run – {km} km to go. 👟',
+    'gam.m.start': 'Log your first run and get going! 🚀',
+    'md.lineup': 'Line-up', 'md.stats': 'Stats', 'md.events': 'Timeline', 'md.info': 'Info',
+    'md.probable': 'Probable line-up', 'md.coach': 'Coach', 'md.bench': 'Bench',
+    'md.noLineup': 'Line-up not available yet.', 'md.noStats': 'No stats yet – match not started.',
+    'md.noEvents': 'No events yet.',
+    'md.demo': 'Demo data – live brings real line-ups & stats.',
+    'st.possession': 'Possession', 'st.shots': 'Shots', 'st.shotsOn': 'on target', 'st.passes': 'Passes',
+    'st.passAcc': 'Pass accuracy', 'st.corners': 'Corners', 'st.fouls': 'Fouls', 'st.yellow': 'Yellow cards',
+    'st.offsides': 'Offsides', 'st.saves': 'Saves',
+    'ev.goal': 'Goal', 'ev.penalty': 'Penalty', 'ev.owngoal': 'Own goal', 'ev.yellow': 'Yellow', 'ev.red': 'Red', 'ev.subst': 'Sub',
+    'pos.gk': 'GK', 'pos.def': 'DEF', 'pos.mid': 'MID', 'pos.fwd': 'FWD',
+    'ch.progress': 'Progress', 'ch.history': 'History', 'ch.ach': 'Awards',
+    'f.all': 'All', 'f.live': 'Live', 'f.today': 'Today', 'f.upcoming': 'Upcoming', 'f.finished': 'Finished',
+    'sec.scorers': 'Top scorers', 'sec.allMatches': 'All matches', 'sec.seeAll': 'See all',
+    'sec.standings': 'Standings', 'sec.bracket': 'Knockout stage', 'sec.weighting': 'Count matches',
+    'sec.weighting.d': 'Switch off = this match’s goals don’t count toward your target.',
+    'sec.noMatches': 'No matches in this selection.',
+    'grp': 'Group', 'tbl.team': 'Team', 'tbl.pl': 'P', 'tbl.diff': 'Diff', 'tbl.pts': 'Pts',
+    'ch.balance': 'Your balance', 'ch.noStreak': 'no streak yet',
+    'ch.trackTitle': 'Log kilometres', 'ch.trackHint': 'Add the distance you just ran.',
+    'ch.addRun': 'Add run', 'today.challenge': 'Your challenge', 'today.open': 'Open',
+    'auth.signin': 'Sign in', 'auth.signup': 'Sign up', 'auth.email': 'Email', 'auth.password': 'Password',
+    'auth.magic': 'Send a magic link instead', 'auth.forgot': 'Forgot password?', 'auth.logout': 'Sign out',
+    'auth.signedInAs': 'Signed in as', 'auth.cloudHint': 'Sign in to back up your runs & settings across devices.',
+    'auth.checkEmail': 'Almost there – confirm your email address. 📧',
+    'auth.magicSent': 'Magic link sent – check your email. 📧', 'auth.resetSent': 'Reset link sent. 📧',
+    'auth.needFields': 'Please enter email and password.', 'auth.needEmail': 'Please enter your email first.',
+    'auth.syncing': 'Syncing …', 'auth.synced': 'Cloud sync active', 'auth.busy': 'Please wait …',
+    'auth.welcome': 'Cloud sync', 'auth.haveAccount': 'Already in?', 'auth.title': 'Sign in or sign up',
+    'rank.title': 'Leaderboard', 'rank.players': 'of {n}', 'rank.you': 'You', 'rank.total': 'Total',
+    'rank.signin': 'Sign in to join the leaderboard.',
+    'gam.top.real': 'of {n} runners', 'set.nickname': 'Display name (leaderboard)',
+    'set.leaderboard': 'Show on leaderboard', 'set.leaderboard.d': 'Shows your name instead of “Runner #”. Otherwise you stay anonymous.',
+  },
+};
+
+/** Übersetzen mit optionalen {platzhaltern}; fällt auf DE und dann den Key zurück. */
+function t(key, vars) {
+  const lang = getLang();
+  let s = (I18N[lang] && I18N[lang][key]) || I18N.de[key] || key;
+  if (vars) for (const k in vars) s = s.replace(new RegExp('\\{' + k + '\\}', 'g'), vars[k]);
+  return s;
+}
+
+/** <html lang> + Nav-Beschriftungen (Sprache) + Sichtbarkeit des Challenge-Tabs */
+function applyNav() {
+  const lang = getLang();
+  document.documentElement.setAttribute('lang', lang);
+  document.querySelectorAll('.nav-btn[data-tab]').forEach((btn) => {
+    const span = btn.querySelector('span');
+    if (span) span.textContent = t('nav.' + btn.dataset.tab);
+    btn.setAttribute('aria-label', t('nav.' + btn.dataset.tab));
+    if (btn.dataset.tab === 'challenge') {
+      btn.classList.toggle('hidden', !state.settings.challengeEnabled);
+    }
+  });
+}
+
 const state = {
   loading:  true,
   data:     null,
@@ -202,6 +406,10 @@ const state = {
   disabled: new Set(load(LS.disabled, [])),   // IDs der Spiele, deren Tore NICHT zählen
   seenBadges: new Set(load(LS.badges, [])),
   selectedDay: null,                          // gewählter Kalender-Tag (startOfDay-Timestamp); null → heute
+  settings: loadSettings(),                   // App-Einstellungen (Sprache, Einheit, Challenge an/aus, …)
+  onboarded: load(LS.onboarded, false),       // Welcome-Screen schon gesehen?
+  auth: { user: null, ready: false, syncing: false },   // Supabase-Login-Status
+  community: null,                                       // Community-Ranking (vom Server)
 };
 
 function persist() {
@@ -209,6 +417,8 @@ function persist() {
   save(LS.badges, [...state.seenBadges]);
   save(LS.disabled, [...state.disabled]);
   save(LS.tab, state.tab);
+  save(LS.settings, state.settings);
+  save(LS.onboarded, state.onboarded);
 }
 
 /* ------------------------------------------------------------------ *
@@ -322,6 +532,109 @@ const JOURNEY = [
   { city: 'New York/NJ',  flag: '🇺🇸', km: 180, note: 'Finale 🏆' },
 ];
 
+/* ------------------------------------------------------------------ *
+ * 3b) GAMIFICATION  (Liga/Level, Wochenziel, Community-Einordnung)
+ * ------------------------------------------------------------------ */
+/** Ligen nach gelaufenen Gesamt-km. names: [de, en] */
+const LEAGUES = [
+  { km: 0,   icon: '🥾', names: ['Einsteiger', 'Rookie'],     color: '#94a3b8' },
+  { km: 10,  icon: '🥉', names: ['Bronze', 'Bronze'],         color: '#cd7f32' },
+  { km: 25,  icon: '🥈', names: ['Silber', 'Silver'],         color: '#c0c0c0' },
+  { km: 50,  icon: '🥇', names: ['Gold', 'Gold'],             color: '#E4B458' },
+  { km: 90,  icon: '💎', names: ['Platin', 'Platinum'],       color: '#22d3ee' },
+  { km: 140, icon: '🏆', names: ['Diamant', 'Diamond'],       color: '#10B981' },
+  { km: 200, icon: '👑', names: ['Legende', 'Legend'],        color: '#7C3AED' },
+];
+
+/* ---- Rang-Abzeichen als SVG (Stern → Edelstein → Krone, Farbe je Liga) ---- */
+const RANK_ART = [
+  { c1: '#e2e8f0', c2: '#94a3b8', glyph: 'star'  },  // Einsteiger (grau)
+  { c1: '#e8a87c', c2: '#cd7f32', glyph: 'star'  },  // Bronze
+  { c1: '#eef2f7', c2: '#aab4c0', glyph: 'star'  },  // Silber
+  { c1: '#f6d36b', c2: '#E4B458', glyph: 'star'  },  // Gold
+  { c1: '#a5f3fc', c2: '#22d3ee', glyph: 'gem'   },  // Platin
+  { c1: '#6ee7b7', c2: '#10B981', glyph: 'gem'   },  // Diamant
+  { c1: '#c4b5fd', c2: '#7C3AED', glyph: 'crown' },  // Legende
+];
+let _rbSeq = 0;
+function rankBadge(idx, size) {
+  const s = size || 56;
+  const a = RANK_ART[idx] || RANK_ART[0];
+  const id = 'rb' + (_rbSeq++);
+  const glyph = a.glyph === 'crown'
+    ? `<path d="M18 41 L16 26 L24 33 L32 22 L40 33 L48 26 L46 41 Z" fill="#fff"/><rect x="18" y="43.5" width="28" height="4" rx="1.5" fill="#fff"/>`
+    : a.glyph === 'gem'
+    ? `<path d="M22 25 H42 L47 31 L32 46 L17 31 Z" fill="#fff"/><path d="M17 31 H47 M27 31 L32 46 M37 31 L32 46 M22 25 L27 31 M42 25 L37 31" stroke="${a.c2}" stroke-width="1.1" fill="none" opacity=".5"/>`
+    : `<path d="M32 19 L35 27.8 L44.4 28 L37 33.6 L39.6 42.5 L32 37.2 L24.4 42.5 L27 33.6 L19.6 28 L29 27.8 Z" fill="#fff"/>`;
+  return `<svg viewBox="0 0 64 64" width="${s}" height="${s}" aria-hidden="true" style="display:block;filter:drop-shadow(0 2px 4px rgba(0,0,0,.18))">
+    <defs><linearGradient id="${id}" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="${a.c1}"/><stop offset="1" stop-color="${a.c2}"/></linearGradient></defs>
+    <circle cx="32" cy="32" r="29" fill="url(#${id})"/>
+    <circle cx="32" cy="32" r="29" fill="none" stroke="#fff" stroke-opacity=".55" stroke-width="2"/>
+    <path d="M14 23 A30 30 0 0 1 50 17" stroke="#fff" stroke-opacity=".35" stroke-width="3" fill="none" stroke-linecap="round"/>
+    ${glyph}
+  </svg>`;
+}
+
+/** Aktuelle Liga + Fortschritt zur nächsten */
+function leagueFor(ran) {
+  let idx = 0;
+  for (let i = 0; i < LEAGUES.length; i++) if (ran >= LEAGUES[i].km) idx = i;
+  const cur = LEAGUES[idx], next = LEAGUES[idx + 1] || null;
+  const span = next ? next.km - cur.km : 1;
+  const progress = next ? Math.min(1, (ran - cur.km) / span) : 1;
+  const name = cur.names[getLang() === 'en' ? 1 : 0];
+  return { idx, level: idx + 1, cur, next, progress, name };
+}
+
+/** Montag-basierter Wochenstart */
+function startOfWeek(ts) {
+  const d = new Date(ts); d.setHours(0, 0, 0, 0);
+  const dow = (d.getDay() + 6) % 7;   // Mo=0 … So=6
+  d.setDate(d.getDate() - dow);
+  return +d;
+}
+
+/** Gelaufene km in der laufenden Kalenderwoche */
+function weeklyKm() {
+  const ws = startOfWeek(Date.now());
+  const km = state.runs.filter((r) => r.km > 0 && r.ts >= ws).reduce((s, r) => s + r.km, 0);
+  return Math.round(km * 10) / 10;
+}
+
+/**
+ * Community-Einordnung „Top X %" — Phase-1-Heuristik (lokal, ohne Server).
+ * Monotone Abbildung gelaufener km → Perzentil. Wird in Phase 5 durch echte
+ * Zahlen aus Supabase ersetzt (selbe Funktionssignatur).
+ * Rückgabe: ganze Zahl 1..99 (kleiner = besser).
+ */
+function topPercent(ran) {
+  if (ran <= 0) return null;
+  // Ankerpunkte (km → Top-%). Dazwischen logarithmisch interpoliert.
+  const anchors = [[1, 80], [5, 60], [15, 40], [30, 25], [50, 15], [90, 8], [140, 4], [200, 2], [300, 1]];
+  if (ran >= anchors[anchors.length - 1][0]) return 1;
+  let pct = 90;
+  for (let i = 0; i < anchors.length - 1; i++) {
+    const [k0, p0] = anchors[i], [k1, p1] = anchors[i + 1];
+    if (ran >= k0 && ran < k1) {
+      const f = (Math.log(ran) - Math.log(k0)) / (Math.log(k1) - Math.log(k0));
+      pct = p0 + f * (p1 - p0);
+      break;
+    }
+    if (ran < anchors[0][0]) { pct = anchors[0][1]; break; }
+  }
+  return Math.max(1, Math.min(99, Math.round(pct)));
+}
+
+/** Motivations-Text je nach Soll/Ist-Lage */
+function motivationKey(ran, soll) {
+  if (ran <= 0) return { key: 'gam.m.start' };
+  if (soll > 0 && ran >= soll) return { key: 'gam.m.ahead' };
+  const open = Math.max(0, soll - ran);
+  if (open <= Math.max(2, soll * 0.15)) return { key: 'gam.m.ontrack' };
+  return { key: 'gam.m.behind', vars: { km: fmtDist(open) } };
+}
+
 /** Burndown/Burnup-Daten: Soll- vs. Ist-km kumuliert über die Turniertage */
 function chartData() {
   if (!state.runs.length && !playedMatches().length) return null;
@@ -345,7 +658,15 @@ function chartData() {
 /* ------------------------------------------------------------------ *
  * 4) HELFER
  * ------------------------------------------------------------------ */
-const fmtKm   = (n) => (Math.round(n * 10) / 10).toLocaleString('de-DE');
+const fmtKm   = (n) => (Math.round(n * 10) / 10).toLocaleString(getLang() === 'en' ? 'en-US' : 'de-DE');
+
+/* ---- Einheiten (km ist kanonisch; Anzeige optional in Meilen) ---- */
+const MI_PER_KM = 0.621371;
+const uLabel  = () => (state.settings.unit === 'mi' ? 'mi' : 'km');
+const fromKm  = (km) => (state.settings.unit === 'mi' ? km * MI_PER_KM : km);   // km → Anzeigeeinheit
+const toKm    = (v)  => (state.settings.unit === 'mi' ? v / MI_PER_KM : v);     // Eingabe → km
+const fmtDist = (km) => fmtKm(fromKm(km));                                       // Zahl in Anzeigeeinheit
+const fmtDistU = (km) => `${fmtDist(km)} ${uLabel()}`;                            // Zahl + Einheit
 
 function fmtKickoff(iso) {
   const d = new Date(iso);
@@ -395,6 +716,30 @@ window.crestErr = (img) => {
 };
 
 /* ------------------------------------------------------------------ *
+ * 4b) WIEDERVERWENDBARE UI-BAUSTEINE (Redesign: clean & konsistent)
+ * ------------------------------------------------------------------ */
+/** Segmented Sub-Tab-Leiste. items: [[key,label],…] */
+function segTabs(action, active, items) {
+  return `<div class="seg mb-5">${items.map(([k, l]) =>
+    `<button data-action="${action}" data-val="${k}" class="seg-btn press ${k === active ? 'seg-active' : ''}">${l}</button>`).join('')}</div>`;
+}
+/** Horizontale Filter-Chips. items: [[key,label],…] */
+function chipRow(action, active, items) {
+  return `<div class="flex gap-2 overflow-x-auto -mx-5 px-5 pb-1 mb-4">${items.map(([k, l]) =>
+    `<button data-action="${action}" data-val="${k}" class="chip press ${k === active ? 'chip-active' : ''}">${l}</button>`).join('')}</div>`;
+}
+/** Konsistenter Sektions-Titel mit optionaler Aktion rechts */
+function sectionTitle(title, right) {
+  return `<div class="flex items-center justify-between mb-2.5 px-1">
+    <h3 class="text-[13px] font-bold tracking-wide uppercase text-ink-900/45 dark:text-ink-50/45">${title}</h3>${right || ''}</div>`;
+}
+
+/* In-Screen-Navigationszustand (nicht persistiert – Default beim Start) */
+let challengeTab   = 'progress';   // 'progress' | 'history' | 'ach'
+let scheduleFilter = 'all';        // 'all' | 'live' | 'today' | 'upcoming' | 'finished'
+let standingsGroup = 'all';        // 'all' | 'A' … 'L'
+
+/* ------------------------------------------------------------------ *
  * 5) RENDER  ·  SCREEN 1: TICKER
  * ------------------------------------------------------------------ */
 /** Einzelne, antippbare Spielzeile (öffnet Detail-Sheet) */
@@ -418,19 +763,40 @@ function matchRow(m) {
 }
 
 /* ===================== SCREEN: SPIELPLAN ===================== */
+const today0 = () => startOfDay(Date.now());
+function matchPassesFilter(m, f) {
+  if (f === 'live') return m.status === 'IN_PLAY';
+  if (f === 'today') return startOfDay(+new Date(m.utcDate)) === today0();
+  if (f === 'upcoming') return m.status === 'SCHEDULED';
+  if (f === 'finished') return m.status === 'FINISHED';
+  return true;
+}
+
 function viewSchedule() {
+  const f = scheduleFilter;
+  const chips = chipRow('sched-filter', f, [
+    ['all', t('f.all')], ['live', t('f.live')], ['today', t('f.today')], ['upcoming', t('f.upcoming')], ['finished', t('f.finished')],
+  ]);
+
   const groupsHtml = Object.keys(state.data.groups).map((g) => {
     const matches = state.data.matches
-      .filter((m) => m.group === g)
+      .filter((m) => m.group === g && matchPassesFilter(m, f))
       .sort((a, b) => new Date(a.utcDate) - new Date(b.utcDate));
+    if (!matches.length) return '';
     const rows = matches.map(matchRow).join('<div class="h-px bg-black/5 dark:bg-white/10 mx-4"></div>');
     return `
-      <section>
-        <h3 class="text-[13px] font-bold tracking-wide text-ink-900/45 dark:text-ink-50/45 mb-2 px-1">GRUPPE ${g}</h3>
+      <section class="fade-up">
+        ${sectionTitle(`${t('grp')} ${g}`)}
         <div class="rounded-xl2 glass-card overflow-hidden">${rows}</div>
       </section>`;
   }).join('');
-  return `<div class="stagger space-y-6">${groupsHtml}</div>`;
+
+  return `<div>
+    ${chips}
+    <div class="stagger space-y-6">
+      ${groupsHtml || `<div class="rounded-xl2 glass-card p-8 text-center text-[13px] text-ink-900/45 dark:text-ink-50/45">${t('sec.noMatches')}</div>`}
+    </div>
+  </div>`;
 }
 
 /* ===================== SCREEN: HEUTE (Übersicht) ===================== */
@@ -473,9 +839,9 @@ function viewToday() {
   return `<div class="stagger space-y-6">
     ${bigTile}
     ${liveStrip}
-    ${challengeSnapshot()}
+    ${state.settings.challengeEnabled ? challengeSnapshot() : ''}
     ${dayPicker()}
-    ${sectionScorers()}
+    ${sectionScorers(3, true)}
   </div>`;
 }
 
@@ -559,21 +925,21 @@ function countdownCard(next) {
 function challengeSnapshot() {
   const soll = sollKm(), ist = totalRan(), open = Math.max(0, soll - ist);
   const pct = soll > 0 ? Math.min(1, ist / soll) : 0;
-  const done = soll > 0 && ist >= soll;
+  const done = soll > 0 && ist >= soll, en = getLang() === 'en';
   return `
     <section>
       <button data-action="switch-tab" data-tab="challenge" class="press w-full text-left rounded-xl2 glass-card p-5">
         <div class="flex items-center justify-between mb-3">
-          <h3 class="text-[15px] font-bold">Deine Challenge</h3>
-          <span class="text-[12px] font-semibold text-wm-emerald">Öffnen →</span>
+          <h3 class="text-[15px] font-bold">${t('today.challenge')}</h3>
+          <span class="text-[12px] font-semibold text-wm-emerald">${t('today.open')} →</span>
         </div>
         <div class="flex items-end gap-4">
           <div>
-            <p class="text-[11px] font-semibold uppercase tracking-wide text-ink-900/40 dark:text-ink-50/40">${done ? 'Geschafft' : 'Noch offen'}</p>
-            <p class="score text-[40px] leading-none ${done ? 'text-wm-emerald' : ''}">${fmtKm(open)}<span class="text-[15px] font-semibold text-ink-900/40 dark:text-ink-50/40 ml-1">km</span></p>
+            <p class="text-[11px] font-semibold uppercase tracking-wide text-ink-900/40 dark:text-ink-50/40">${done ? (en ? 'Done' : 'Geschafft') : (en ? 'Open' : 'Noch offen')}</p>
+            <p class="score text-[40px] leading-none ${done ? 'text-wm-emerald' : ''}">${fmtDist(open)}<span class="text-[15px] font-semibold text-ink-900/40 dark:text-ink-50/40 ml-1">${uLabel()}</span></p>
           </div>
           <div class="flex-1 pb-1">
-            <div class="flex justify-between text-[11px] text-ink-900/45 dark:text-ink-50/45 mb-1"><span>${fmtKm(ist)} km</span><span>${fmtKm(soll)} km</span></div>
+            <div class="flex justify-between text-[11px] text-ink-900/45 dark:text-ink-50/45 mb-1"><span>${fmtDistU(ist)}</span><span>${fmtDistU(soll)}</span></div>
             <div class="h-2 rounded-full bg-black/[0.06] dark:bg-white/[0.08] overflow-hidden">
               <div class="bar-fill h-full rounded-full" style="width:${(pct * 100).toFixed(1)}%;background:linear-gradient(90deg,#10B981,#34C759)"></div>
             </div>
@@ -648,9 +1014,14 @@ function pitchLines() {
   </svg>`;
 }
 
-/** Alle Gruppentabellen (live aus Ergebnissen berechnet) */
+/** Alle Gruppentabellen (live aus Ergebnissen berechnet) + Gruppen-Chips */
 function viewStandings() {
-  const groups = Object.keys(state.data.groups);
+  const allGroups = Object.keys(state.data.groups);
+  if (!allGroups.includes(standingsGroup) && standingsGroup !== 'all') standingsGroup = 'all';
+  const chips = chipRow('standings-group', standingsGroup,
+    [['all', t('f.all')], ...allGroups.map((g) => [g, g])]);
+  const groups = standingsGroup === 'all' ? allGroups : [standingsGroup];
+
   const tables = groups.map((g) => {
     const rows = computeStandings(g).map((r, i) => {
       const qual = i < 2;   // Top 2 = sicher weiter (3. teils auch, hier vereinfacht)
@@ -671,16 +1042,16 @@ function viewStandings() {
 
     return `
       <section class="fade-up">
-        <h3 class="text-[13px] font-bold tracking-wide text-ink-900/50 dark:text-ink-50/50 mb-2 px-1">GRUPPE ${g}</h3>
+        ${sectionTitle(`${t('grp')} ${g}`)}
         <div class="rounded-xl2 glass-card overflow-hidden">
           <table class="w-full border-collapse">
             <thead>
               <tr class="text-[10px] font-semibold uppercase tracking-wide text-ink-900/35 dark:text-ink-50/35">
                 <th class="py-1.5 pl-3 pr-1 text-left font-semibold">#</th>
-                <th class="py-1.5 text-left font-semibold">Team</th>
-                <th class="py-1.5 px-1 text-center font-semibold">Sp</th>
-                <th class="py-1.5 px-1 text-center font-semibold">Diff</th>
-                <th class="py-1.5 pl-1 pr-3 text-center font-semibold">Pkt</th>
+                <th class="py-1.5 text-left font-semibold">${t('tbl.team')}</th>
+                <th class="py-1.5 px-1 text-center font-semibold">${t('tbl.pl')}</th>
+                <th class="py-1.5 px-1 text-center font-semibold">${t('tbl.diff')}</th>
+                <th class="py-1.5 pl-1 pr-3 text-center font-semibold">${t('tbl.pts')}</th>
               </tr>
             </thead>
             <tbody>${rows}</tbody>
@@ -689,14 +1060,16 @@ function viewStandings() {
       </section>`;
   }).join('');
 
-  return `<div class="space-y-6">${tables}</div>`;
+  return `<div>${chips}<div class="space-y-6">${tables}</div></div>`;
 }
 
-/** Torschützenliste – nur sichtbar, wenn der Worker echte Scorer-Daten liefert */
-function sectionScorers() {
+/** Torschützenliste – nur sichtbar, wenn der Worker echte Scorer-Daten liefert.
+ *  limit = Anzahl (Default 10); seeAll = „Alle anzeigen"-Link zur Tabelle. */
+function sectionScorers(limit, seeAll) {
   const scorers = Array.isArray(state.data.scorers) ? state.data.scorers : [];
   if (!scorers.length) return '';
-  const rows = scorers.slice(0, 10).map((s, i) => `
+  const goalsLabel = getLang() === 'en' ? 'goals' : 'Tore';
+  const rows = scorers.slice(0, limit || 10).map((s, i) => `
     <div class="flex items-center gap-3 px-4 py-2.5">
       <span class="w-5 text-center text-[13px] font-bold tabular-nums ${i === 0 ? 'text-wm-gold' : 'text-ink-900/40 dark:text-ink-50/40'}">${i + 1}</span>
       <span class="text-lg leading-none">${s.flag || '⚽️'}</span>
@@ -704,14 +1077,17 @@ function sectionScorers() {
         <p class="text-[14px] font-medium truncate">${s.name}</p>
         <p class="text-[11px] text-ink-900/45 dark:text-ink-50/45 truncate">${s.team || ''}</p>
       </div>
-      <span class="text-[15px] font-bold tabular-nums">${s.goals}<span class="text-[11px] font-normal text-ink-900/40 dark:text-ink-50/40 ml-0.5">Tore</span></span>
+      <span class="text-[15px] font-bold tabular-nums">${s.goals}<span class="text-[11px] font-normal text-ink-900/40 dark:text-ink-50/40 ml-0.5">${goalsLabel}</span></span>
     </div>`).join('<div class="h-px bg-black/5 dark:bg-white/10 mx-4"></div>');
 
+  const right = seeAll
+    ? `<button data-action="switch-tab" data-tab="table" class="text-[12px] font-semibold text-wm-emerald press">${t('sec.seeAll')} →</button>`
+    : '';
   return `
-    <div class="rounded-xl2 glass-card overflow-hidden">
-      <div class="px-4 pt-4 pb-2"><h3 class="text-[15px] font-bold">⚽️ Torschützenkönige</h3></div>
-      ${rows}
-    </div>`;
+    <section>
+      ${sectionTitle('⚽️ ' + t('sec.scorers'), right)}
+      <div class="rounded-xl2 glass-card overflow-hidden">${rows}</div>
+    </section>`;
 }
 
 /* ---- K.o.-Baum (Knockout) ---- */
@@ -728,13 +1104,15 @@ function sectionBracket() {
   const ko = state.data.matches.filter((m) => KO_STAGES.some(([k]) => k === m.stage));
 
   if (!ko.length) {
+    const en = getLang() === 'en';
     return `
       <div class="rounded-xl2 glass-card p-6 text-center">
         <div class="w-12 h-12 mx-auto mb-3 rounded-full grid place-items-center text-2xl" style="background:linear-gradient(135deg,#10B981,#059669)">🏆</div>
-        <h3 class="text-[15px] font-bold mb-1">K.o.-Baum</h3>
+        <h3 class="text-[15px] font-bold mb-1">${t('sec.bracket')}</h3>
         <p class="text-[13px] text-ink-900/50 dark:text-ink-50/50 leading-relaxed">
-          Die K.o.-Phase startet nach der Gruppenphase.<br>
-          32 Teams ziehen weiter – bis zum Finale am 19. Juli 2026 in New York/NJ. 🇺🇸
+          ${en
+            ? 'The knockout stage starts after the group phase.<br>32 teams advance – up to the final on 19 July 2026 in New York/NJ. 🇺🇸'
+            : 'Die K.-o.-Phase startet nach der Gruppenphase.<br>32 Teams ziehen weiter – bis zum Finale am 19. Juli 2026 in New York/NJ. 🇺🇸'}
         </p>
       </div>`;
   }
@@ -744,7 +1122,7 @@ function sectionBracket() {
     if (!ms.length) return '';
     return `
       <section>
-        <h3 class="text-[13px] font-bold tracking-wide text-ink-900/45 dark:text-ink-50/45 mb-2 px-1">${label.toUpperCase()}</h3>
+        ${sectionTitle(label)}
         <div class="rounded-xl2 glass-card overflow-hidden">
           ${ms.map(matchRow).join('<div class="h-px bg-black/5 dark:bg-white/10 mx-4"></div>')}
         </div>
@@ -755,61 +1133,22 @@ function sectionBracket() {
 }
 
 /* ------------------------------------------------------------------ *
- * 6) RENDER  ·  SCREEN 2: CHALLENGE
+ * 6) RENDER  ·  SCREEN 2: CHALLENGE  (Sub-Tabs: Fortschritt/Verlauf/Erfolge)
  * ------------------------------------------------------------------ */
-function viewChallenge() {
-  const soll = sollKm();
-  const ist  = totalRan();
-  const open = Math.max(0, soll - ist);
-  const pct  = soll > 0 ? Math.min(1, ist / soll) : 0;
-  const streak = streakDays();
-  const snap = snapshot();
-
-  // Ring-Geometrie
-  const R = 84, C = 2 * Math.PI * R;
-  const offset = C * (1 - pct);
-  const done = soll > 0 && ist >= soll;
-
-  // Spiel-Filter-Liste (nur gespielte Spiele)
-  const filterRows = playedMatches()
-    .sort((a, b) => new Date(b.utcDate) - new Date(a.utcDate))
-    .map((m) => {
-      const h = team(m.home), a = team(m.away);
-      const on = !state.disabled.has(m.id);
-      const g  = goalsOf(m);
-      return `
-        <div class="flex items-center gap-3 px-4 py-3">
-          <div class="flex-1 min-w-0">
-            <div class="flex items-center gap-1.5 text-[14px] font-medium">
-              ${crest(h, 'crest-sm')}<span class="truncate">${h.name}</span>
-              <span class="score text-[15px] mx-0.5">${m.score.home}:${m.score.away}</span>
-              <span class="truncate">${a.name}</span>${crest(a, 'crest-sm')}
-            </div>
-            <div class="flex items-center gap-1.5 text-[11px] mt-0.5 text-ink-900/45 dark:text-ink-50/45">
-              <svg class="w-3 h-3 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
-              <span class="tabular-nums">${fmtDate(m.utcDate)} · ${fmtTime(m.utcDate)} Uhr</span>
-              ${m.status === 'IN_PLAY' ? `<span class="text-wm-red font-semibold">· ${liveMinute(m)}</span>` : ''}
-            </div>
-            <div class="text-[11px] mt-0.5 ${on ? 'text-wm-green' : 'text-ink-900/35 dark:text-ink-50/35 line-through'}">
-              ${g} ${g === 1 ? 'Tor' : 'Tore'} ${on ? 'gewertet' : 'ausgenommen'} · Gruppe ${m.group}
-            </div>
-          </div>
-          <button data-action="toggle-match" data-id="${m.id}" data-on="${on}" role="switch" aria-checked="${on}"
-                  class="switch shrink-0 ${on ? 'bg-wm-green' : 'bg-black/15 dark:bg-white/20'}">
-            <span class="switch-knob block bg-white rounded-full ml-0.5 mt-0.5"></span>
-          </button>
-        </div>`;
-    }).join('<div class="h-px bg-black/5 dark:bg-white/10 mx-4"></div>');
-
-  return `<div class="stagger">
-    <!-- Fortschrittsring -->
+/** Fortschrittsring + Soll/Ist/Quote */
+function challengeRingCard() {
+  const soll = sollKm(), ist = totalRan(), open = Math.max(0, soll - ist);
+  const pct = soll > 0 ? Math.min(1, ist / soll) : 0, streak = streakDays();
+  const R = 84, C = 2 * Math.PI * R, offset = C * (1 - pct), done = soll > 0 && ist >= soll;
+  const en = getLang() === 'en';
+  return `
     <div class="rounded-xl2 glass-card p-6 mb-5">
       <div class="flex items-center justify-between mb-1">
-        <h3 class="text-[15px] font-bold">Deine Bilanz</h3>
+        <h3 class="text-[15px] font-bold">${t('ch.balance')}</h3>
         ${streak > 0
           ? `<span class="inline-flex items-center gap-1 text-[13px] font-bold px-2.5 py-1 rounded-full bg-wm-red/10 text-wm-red">
-               <span class="flame">🔥</span>${streak} ${streak === 1 ? 'Tag' : 'Tage'}</span>`
-          : `<span class="text-[12px] text-ink-900/40 dark:text-ink-50/40">noch kein Streak</span>`}
+               <span class="flame">🔥</span>${streak} ${en ? (streak === 1 ? 'day' : 'days') : (streak === 1 ? 'Tag' : 'Tage')}</span>`
+          : `<span class="text-[12px] text-ink-900/40 dark:text-ink-50/40">${t('ch.noStreak')}</span>`}
       </div>
       <div class="relative grid place-items-center">
         <svg width="200" height="200" viewBox="0 0 200 200" class="-rotate-90">
@@ -819,74 +1158,133 @@ function viewChallenge() {
                   stroke-dasharray="${C.toFixed(1)}" stroke-dashoffset="${offset.toFixed(1)}"/>
         </svg>
         <div class="absolute inset-0 grid place-content-center text-center">
-          <p class="text-[11px] font-semibold tracking-widest uppercase text-ink-900/45 dark:text-ink-50/45">${done ? 'Geschafft' : 'Offen'}</p>
-          <p id="c-open" class="text-[44px] font-extrabold leading-none tabular-nums ${done ? 'text-wm-green' : ''}">${fmtKm(open)}</p>
-          <p class="text-[13px] text-ink-900/45 dark:text-ink-50/45">${done ? 'alles gelaufen 🎉' : 'km übrig'}</p>
+          <p class="text-[11px] font-semibold tracking-widest uppercase text-ink-900/45 dark:text-ink-50/45">${done ? (en ? 'Done' : 'Geschafft') : (en ? 'Open' : 'Offen')}</p>
+          <p id="c-open" class="text-[44px] font-extrabold leading-none tabular-nums ${done ? 'text-wm-green' : ''}">${fmtDist(open)}</p>
+          <p class="text-[13px] text-ink-900/45 dark:text-ink-50/45">${done ? (en ? 'all done 🎉' : 'alles gelaufen 🎉') : (en ? uLabel() + ' left' : uLabel() + ' übrig')}</p>
         </div>
       </div>
-
-      <!-- Soll / Ist / % -->
       <div class="grid grid-cols-3 gap-2 mt-5">
-        ${stat('Soll', fmtKm(soll) + ' km', 'text-wm-gold')}
-        ${stat('Gelaufen', fmtKm(ist) + ' km', 'text-wm-green', 'c-ist')}
-        ${stat('Quote', Math.round(pct * 100) + ' %', 'text-wm-blue', 'c-quote')}
+        ${stat(en ? 'Target' : 'Soll', fmtDistU(soll), 'text-wm-gold')}
+        ${stat(en ? 'Done' : 'Gelaufen', fmtDistU(ist), 'text-wm-green', 'c-ist')}
+        ${stat(en ? 'Rate' : 'Quote', Math.round(pct * 100) + ' %', 'text-wm-blue', 'c-quote')}
       </div>
-    </div>
+    </div>`;
+}
 
-    ${sectionJourney(ist)}
-
-    <!-- Kilometer-Tracker -->
+/** Kilometer-Eingabe */
+function kmTrackerCard() {
+  return `
     <div class="fade-up rounded-xl2 glass-card p-5 mb-5">
-      <h3 class="text-[15px] font-bold mb-1">Kilometer eintragen</h3>
-      <p class="text-[12px] text-ink-900/45 dark:text-ink-50/45 mb-4">Trag deine gerade gelaufene Strecke ein.</p>
-
+      <h3 class="text-[15px] font-bold mb-1">${t('ch.trackTitle')}</h3>
+      <p class="text-[12px] text-ink-900/45 dark:text-ink-50/45 mb-4">${t('ch.trackHint')}</p>
       <div class="flex items-center gap-3">
-        <button data-action="step-km" data-amount="-1" aria-label="1 km abziehen"
+        <button data-action="step-km" data-amount="-1" aria-label="−1"
                 class="w-12 h-12 rounded-full grid place-items-center text-2xl font-light bg-black/5 dark:bg-white/10 active:scale-90 transition select-none">−</button>
-
         <form data-action="submit-km" class="flex-1">
           <div class="relative">
             <input id="km-input" type="number" inputmode="decimal" step="0.1" min="0" placeholder="0"
                    class="w-full text-center text-3xl font-bold tabular-nums bg-transparent outline-none py-1
                           placeholder:text-ink-900/20 dark:placeholder:text-ink-50/20"/>
-            <span class="absolute right-1 top-1/2 -translate-y-1/2 text-sm font-medium text-ink-900/35 dark:text-ink-50/35">km</span>
+            <span class="absolute right-1 top-1/2 -translate-y-1/2 text-sm font-medium text-ink-900/35 dark:text-ink-50/35">${uLabel()}</span>
           </div>
         </form>
-
-        <button data-action="step-km" data-amount="1" aria-label="1 km hinzufügen"
+        <button data-action="step-km" data-amount="1" aria-label="+1"
                 class="w-12 h-12 rounded-full grid place-items-center text-2xl font-light bg-black/5 dark:bg-white/10 active:scale-90 transition select-none">+</button>
       </div>
-
-      <div class="grid grid-cols-4 gap-2 mt-4">
-        ${quickBtn(0.5)} ${quickBtn(1)} ${quickBtn(3)} ${quickBtn(5)}
-      </div>
-
+      <div class="grid grid-cols-4 gap-2 mt-4">${quickBtn(0.5)} ${quickBtn(1)} ${quickBtn(3)} ${quickBtn(5)}</div>
       <button data-action="submit-km-btn"
               class="press w-full mt-4 py-3 rounded-xl text-white font-semibold shadow-glow"
-              style="background:linear-gradient(135deg,#10B981,#059669)">
-        Lauf hinzufügen
-      </button>
-    </div>
+              style="background:linear-gradient(135deg,#10B981,#059669)">${t('ch.addRun')}</button>
+    </div>`;
+}
 
-    ${sectionChart()}
+/** „Spiele werten" (welche Partien zählen zum Soll) */
+function matchWeightingCard() {
+  const en = getLang() === 'en';
+  const filterRows = playedMatches()
+    .sort((a, b) => new Date(b.utcDate) - new Date(a.utcDate))
+    .map((m) => {
+      const h = team(m.home), a = team(m.away);
+      const on = !state.disabled.has(m.id), g = goalsOf(m);
+      return `
+        <div class="flex items-center gap-3 px-4 py-3">
+          <div class="flex-1 min-w-0">
+            <div class="flex items-center gap-1.5 text-[14px] font-medium">
+              ${crest(h, 'crest-sm')}<span class="truncate">${h.name}</span>
+              <span class="score text-[15px] mx-0.5">${m.score.home}:${m.score.away}</span>
+              <span class="truncate">${a.name}</span>${crest(a, 'crest-sm')}
+            </div>
+            <div class="flex items-center gap-1.5 text-[11px] mt-0.5 text-ink-900/45 dark:text-ink-50/45">
+              <span class="tabular-nums">${fmtDate(m.utcDate)} · ${fmtTime(m.utcDate)}${en ? '' : ' Uhr'}</span>
+              ${m.status === 'IN_PLAY' ? `<span class="text-wm-red font-semibold">· ${liveMinute(m)}</span>` : ''}
+            </div>
+            <div class="text-[11px] mt-0.5 ${on ? 'text-wm-green' : 'text-ink-900/35 dark:text-ink-50/35 line-through'}">
+              ${g} ${en ? (g === 1 ? 'goal' : 'goals') : (g === 1 ? 'Tor' : 'Tore')} ${on ? (en ? 'counted' : 'gewertet') : (en ? 'excluded' : 'ausgenommen')} · ${t('grp')} ${m.group}
+            </div>
+          </div>
+          <button data-action="toggle-match" data-id="${m.id}" data-on="${on}" role="switch" aria-checked="${on}"
+                  class="switch shrink-0 ${on ? 'bg-wm-green' : 'bg-black/15 dark:bg-white/20'}">
+            <span class="switch-knob block bg-white rounded-full ml-0.5 mt-0.5"></span>
+          </button>
+        </div>`;
+    }).join('<div class="h-px bg-black/5 dark:bg-white/10 mx-4"></div>');
 
-    ${sectionHistory()}
-
-    <!-- Spiel-Filter -->
+  return `
     <div class="fade-up rounded-xl2 glass-card overflow-hidden mb-5">
       <div class="px-4 pt-4 pb-2">
-        <h3 class="text-[15px] font-bold">Spiele werten</h3>
-        <p class="text-[12px] text-ink-900/45 dark:text-ink-50/45">Schalter aus = Tore dieses Spiels werden vom Soll abgezogen.</p>
+        <h3 class="text-[15px] font-bold">${t('sec.weighting')}</h3>
+        <p class="text-[12px] text-ink-900/45 dark:text-ink-50/45">${t('sec.weighting.d')}</p>
       </div>
-      ${filterRows || '<p class="px-4 pb-4 text-[13px] text-ink-900/45">Noch keine gespielten Partien.</p>'}
-    </div>
+      ${filterRows || `<p class="px-4 pb-4 text-[13px] text-ink-900/45">${t('sec.noMatches')}</p>`}
+    </div>`;
+}
 
-    ${sectionBadges(snap)}
+/** Wochen-Leaderboard (echte Community-Daten, anonym oder mit Anzeigename) */
+function leaderboardCard() {
+  // Eingeloggt + Daten vorhanden → Rangliste; konfiguriert aber ausgeloggt → dezenter Hinweis
+  if (!loggedIn()) {
+    if (!supaConfigured()) return '';
+    return `<button data-action="open-auth" class="press w-full text-left fade-up rounded-xl2 glass-card p-4 mb-5 flex items-center gap-3">
+      <span class="text-2xl">🏆</span>
+      <span class="flex-1 text-[13px] font-medium text-ink-900/60 dark:text-ink-50/60">${t('rank.signin')}</span>
+      <span class="text-[12px] font-semibold text-wm-emerald">${t('auth.signin')} →</span>
+    </button>`;
+  }
+  const c = state.community;
+  if (!c || !Array.isArray(c.top) || !c.top.length) return '';
+  const rows = c.top.map((r) => {
+    const name = r.is_me ? (state.settings.nickname || t('rank.you')) : r.name;
+    const medal = r.rank === 1 ? '🥇' : r.rank === 2 ? '🥈' : r.rank === 3 ? '🥉' : '';
+    return `
+      <div class="flex items-center gap-3 px-4 py-2.5 ${r.is_me ? 'bg-wm-emerald/[0.08]' : ''}">
+        <span class="w-6 text-center text-[13px] font-bold tabular-nums ${r.rank <= 3 ? 'text-wm-gold' : 'text-ink-900/40 dark:text-ink-50/40'}">${medal || r.rank}</span>
+        <p class="flex-1 min-w-0 text-[14px] ${r.is_me ? 'font-bold' : 'font-medium'} truncate">${name}</p>
+        <div class="text-right shrink-0">
+          <p class="text-[14px] font-bold tabular-nums">${fmtDistU(r.week_km)}</p>
+          <p class="text-[10px] text-ink-900/40 dark:text-ink-50/40">${t('rank.total')}: ${fmtDist(r.total_km)}</p>
+        </div>
+      </div>`;
+  }).join('<div class="h-px bg-black/5 dark:bg-white/10 mx-4"></div>');
+  const right = `<span class="text-[12px] text-ink-900/35 dark:text-ink-50/35">${t('rank.players', { n: c.total_players })}</span>`;
+  return `<section class="mb-5">
+    ${sectionTitle('🏆 ' + t('rank.title'), right)}
+    <div class="rounded-xl2 glass-card overflow-hidden">${rows}</div>
+  </section>`;
+}
 
-    <button data-action="reset"
-            class="w-full py-3 rounded-xl text-wm-red font-medium text-[14px] active:opacity-60 transition mb-2">
-      Fortschritt zurücksetzen
-    </button>
+function chProgress()    { const ist = totalRan(), soll = sollKm(); return `${challengeRingCard()}${sectionGamification(ist, soll)}${leaderboardCard()}${sectionJourney(ist)}${kmTrackerCard()}`; }
+function chHistory()     { return `${sectionChart()}${sectionHistory()}`; }
+function chAchievements() {
+  return `${sectionBadges(snapshot())}${matchWeightingCard()}
+    <button data-action="reset" class="w-full py-3 rounded-xl text-wm-red font-medium text-[14px] active:opacity-60 transition mb-2">${t('set.reset')}</button>`;
+}
+
+function viewChallenge() {
+  const tabs = [['progress', t('ch.progress')], ['history', t('ch.history')], ['ach', t('ch.ach')]];
+  const body = challengeTab === 'history' ? chHistory() : challengeTab === 'ach' ? chAchievements() : chProgress();
+  return `<div>
+    ${segTabs('challenge-tab', challengeTab, tabs)}
+    <div class="stagger">${body}</div>
   </div>`;
 }
 
@@ -905,6 +1303,70 @@ const quickBtn = (km) => `
 /* ------------------------------------------------------------------ *
  * 6b) CHALLENGE-SEKTIONEN
  * ------------------------------------------------------------------ */
+
+/** Rang/Liga + „Top X %" + Wochenziel + Motivations-Zeile */
+function sectionGamification(ist, soll) {
+  const lg = leagueFor(ist);
+  // Echte Server-Daten bevorzugen (ab 3 Läufern), sonst lokale Heuristik
+  const comm = state.community;
+  const useServer = !!(comm && comm.total_players >= 3 && comm.percentile != null);
+  const pct = useServer ? comm.percentile : topPercent(ist);
+  const subLabel = useServer ? t('gam.top.real', { n: comm.total_players }) : t('gam.top.sub');
+  const goal = Math.max(1, Number(state.settings.weeklyGoalKm) || DEFAULT_SETTINGS.weeklyGoalKm);
+  const wk = weeklyKm();
+  const wkPct = Math.min(1, wk / goal);
+  const wkDone = wk >= goal;
+  const mot = motivationKey(ist, soll);
+
+  return `
+    <div class="fade-up rounded-xl2 glass-card p-5 mb-5">
+      <div class="flex items-center justify-between mb-4">
+        <h3 class="text-[15px] font-bold">${t('gam.title')}</h3>
+        ${pct != null
+          ? `<span class="inline-flex items-baseline gap-1 text-[12px] font-bold px-2.5 py-1 rounded-full bg-wm-emerald/12 text-wm-emerald">
+               ${t('gam.top', { pct })}<span class="font-medium opacity-70">· ${subLabel}</span></span>`
+          : ''}
+      </div>
+
+      <!-- Liga / Level -->
+      <div class="flex items-center gap-3">
+        <div class="shrink-0">${rankBadge(lg.idx, 56)}</div>
+        <div class="flex-1 min-w-0">
+          <div class="flex items-center justify-between">
+            <p class="text-[16px] font-extrabold leading-tight" style="color:${lg.cur.color}">${lg.name}</p>
+            <span class="text-[11px] font-semibold text-ink-900/45 dark:text-ink-50/45">${t('gam.level')} ${lg.level}</span>
+          </div>
+          <div class="mt-1.5 h-2 rounded-full bg-black/[0.06] dark:bg-white/[0.08] overflow-hidden">
+            <div class="bar-fill h-full rounded-full" style="width:${(lg.progress * 100).toFixed(1)}%;background:linear-gradient(90deg,${lg.cur.color},#10B981)"></div>
+          </div>
+          <p class="text-[11px] mt-1 text-ink-900/45 dark:text-ink-50/45">
+            ${lg.next
+              ? `${fmtDistU(ist)} · ${getLang() === 'en' ? 'next' : 'nächste'}: ${lg.next.names[getLang() === 'en' ? 1 : 0]} ${getLang() === 'en' ? 'at' : 'ab'} ${fmtDistU(lg.next.km)}`
+              : `${fmtDistU(ist)} · 🏁 ${getLang() === 'en' ? 'max level reached' : 'Maximal-Level erreicht'}`}
+          </p>
+        </div>
+      </div>
+
+      <!-- Wochenziel -->
+      <div class="mt-4 pt-4 border-t border-black/5 dark:border-white/10">
+        <div class="flex items-center justify-between mb-1.5">
+          <span class="text-[13px] font-semibold">${t('gam.weekly')}</span>
+          <span class="text-[12px] font-bold tabular-nums ${wkDone ? 'text-wm-green' : 'text-ink-900/55 dark:text-ink-50/55'}">${fmtDist(wk)} / ${fmtDistU(goal)}</span>
+        </div>
+        <div class="h-2.5 rounded-full bg-black/[0.06] dark:bg-white/[0.08] overflow-hidden">
+          <div class="bar-fill h-full rounded-full" style="width:${(wkPct * 100).toFixed(1)}%;background:linear-gradient(90deg,#10B981,#34C759)"></div>
+        </div>
+        <p class="text-[12px] mt-2 font-medium ${wkDone ? 'text-wm-green' : 'text-ink-900/55 dark:text-ink-50/55'}">
+          ${wkDone ? t('gam.weekly.done') : t('gam.weekly.left', { km: fmtDist(Math.max(0, goal - wk)) })}
+        </p>
+      </div>
+
+      <!-- Motivation -->
+      <div class="mt-3 rounded-xl bg-wm-emerald/[0.08] px-3.5 py-2.5 text-[13px] font-medium text-wm-emerald">
+        ${t(mot.key, mot.vars)}
+      </div>
+    </div>`;
+}
 
 /** Virtuelle WM-Reise quer durch die Gastgeberstädte */
 function sectionJourney(ist) {
@@ -1028,10 +1490,14 @@ function sectionHistory() {
           ${pos ? '🏃' : '↩︎'}
         </div>
         <div class="flex-1 min-w-0">
-          <p class="text-[14px] font-semibold tabular-nums ${pos ? '' : 'text-wm-red'}">${pos ? '+' : ''}${fmtKm(r.km)} km</p>
-          <p class="text-[11px] text-ink-900/45 dark:text-ink-50/45">${date} · ${time} Uhr</p>
+          <p class="text-[14px] font-semibold tabular-nums ${pos ? '' : 'text-wm-red'}">${pos ? '+' : ''}${fmtDistU(r.km)}</p>
+          <p class="text-[11px] text-ink-900/45 dark:text-ink-50/45">${date} · ${time} ${getLang() === 'en' ? '' : 'Uhr'}</p>
         </div>
-        <button data-action="delete-run" data-id="${r.id}" aria-label="Eintrag löschen"
+        ${pos ? `<button data-action="edit-run" data-id="${r.id}" aria-label="${t('run.edit')}"
+                class="w-8 h-8 grid place-items-center rounded-full text-ink-900/35 dark:text-ink-50/35 active:bg-black/5 dark:active:bg-white/10 transition">
+          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+        </button>` : ''}
+        <button data-action="delete-run" data-id="${r.id}" aria-label="${t('common.delete')}"
                 class="w-8 h-8 grid place-items-center rounded-full text-ink-900/35 dark:text-ink-50/35 active:bg-black/5 dark:active:bg-white/10 transition">
           <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></svg>
         </button>
@@ -1072,6 +1538,135 @@ function sectionBadges(snap) {
     </div>`;
 }
 
+/* ===================== SCREEN: EINSTELLUNGEN ===================== */
+const APP_VERSION = '1.5.2';
+
+/** Segment-Control: Optionen [{v,label}], aktiver Wert val, Aktion action */
+function segmented(action, val, options) {
+  return `<div class="flex gap-1.5 p-1.5 rounded-2xl bg-black/[0.05] dark:bg-white/[0.06]">
+    ${options.map((o) => `
+      <button data-action="${action}" data-val="${o.v}"
+        class="flex-1 py-2.5 px-4 rounded-xl text-[13px] font-semibold transition press
+               ${String(o.v) === String(val)
+                 ? 'bg-white dark:bg-ink-800 shadow text-ink-900 dark:text-ink-50'
+                 : 'text-ink-900/50 dark:text-ink-50/50'}">${o.label}</button>`).join('')}
+  </div>`;
+}
+
+/** Zeile mit Label + kleinem Control rechts (für Toggles, Stepper, Werte) */
+function settingRow(label, control, sub) {
+  return `<div class="px-4 py-3">
+    <div class="flex items-center justify-between gap-3">
+      <div class="min-w-0">
+        <p class="text-[14px] font-semibold">${label}</p>
+        ${sub ? `<p class="text-[11px] text-ink-900/45 dark:text-ink-50/45 mt-0.5">${sub}</p>` : ''}
+      </div>
+      <div class="shrink-0">${control}</div>
+    </div>
+  </div>`;
+}
+
+/** Gestapelte Zeile: Label oben, Control volle Breite darunter (für Segment-Schalter) */
+function settingBlock(label, control, sub) {
+  return `<div class="px-4 py-3.5">
+    <p class="text-[14px] font-semibold mb-0.5">${label}</p>
+    ${sub ? `<p class="text-[11px] text-ink-900/45 dark:text-ink-50/45 mb-2.5">${sub}</p>` : '<div class="mb-2.5"></div>'}
+    ${control}
+  </div>`;
+}
+
+function toggleSwitch(action, on) {
+  return `<button data-action="${action}" role="switch" aria-checked="${on}"
+            class="switch shrink-0 ${on ? 'bg-wm-green' : 'bg-black/15 dark:bg-white/20'}" data-on="${on}">
+            <span class="switch-knob block bg-white rounded-full ml-0.5 mt-0.5"></span>
+          </button>`;
+}
+
+/** Konto-Sektion: je nach Konfiguration/Login-Status */
+function accountCard() {
+  if (!supaConfigured()) {
+    return `<div class="px-4 py-4 text-[13px] text-ink-900/55 dark:text-ink-50/55">🔒 ${t('set.account.soon')}</div>`;
+  }
+  if (loggedIn()) {
+    const status = state.auth.syncing
+      ? `<span class="inline-flex items-center gap-1.5 text-[12px] font-semibold text-ink-900/50 dark:text-ink-50/50"><span class="w-1.5 h-1.5 rounded-full bg-wm-gold live-dot"></span>${t('auth.syncing')}</span>`
+      : `<span class="inline-flex items-center gap-1.5 text-[12px] font-semibold text-wm-emerald"><span class="w-1.5 h-1.5 rounded-full bg-wm-emerald"></span>${t('auth.synced')}</span>`;
+    return settingRow(t('auth.signedInAs'),
+        `<span class="text-[13px] font-semibold text-ink-900/70 dark:text-ink-50/70 truncate max-w-[150px] inline-block align-bottom">${userEmail()}</span>`) +
+      settingRow(t('set.leaderboard'), toggleSwitch('toggle-leaderboard', state.settings.leaderboardOptin), t('set.leaderboard.d')) +
+      (state.settings.leaderboardOptin ? `<div class="px-4 py-3">
+        <input id="nickname-input" type="text" maxlength="24" value="${(state.settings.nickname || '').replace(/"/g, '&quot;')}" placeholder="${t('set.nickname')}"
+               class="w-full px-4 py-2.5 rounded-xl bg-black/[0.04] dark:bg-white/[0.06] text-[14px] outline-none focus:ring-2 ring-wm-emerald/40"/>
+      </div>` : '') +
+      `<div class="px-4 py-3 flex items-center justify-between">${status}
+        <button data-action="logout" class="press text-[13px] font-semibold text-wm-red px-3 py-1.5 rounded-lg bg-wm-red/10">${t('auth.logout')}</button>
+      </div>`;
+  }
+  return `<div class="px-4 py-4">
+      <p class="text-[12px] text-ink-900/50 dark:text-ink-50/50 mb-3">${t('auth.cloudHint')}</p>
+      <button data-action="open-auth" class="press w-full py-3 rounded-xl text-white font-semibold shadow-glow"
+              style="background:linear-gradient(135deg,#10B981,#059669)">${t('auth.signin')}</button>
+    </div>`;
+}
+
+function viewSettings() {
+  const en = getLang() === 'en';
+  const s = state.settings;
+  const themeVal = load(LS.theme, null) || 'system';
+  const langVal = SUPPORTED_LANGS.includes(s.lang) ? s.lang : 'auto';
+  const goal = Math.max(1, Number(s.weeklyGoalKm) || DEFAULT_SETTINGS.weeklyGoalKm);
+
+  const card = (title, inner) => `
+    <h3 class="text-[12px] font-bold uppercase tracking-wide text-ink-900/40 dark:text-ink-50/40 px-1 mb-2 mt-5">${title}</h3>
+    <div class="rounded-xl2 glass-card overflow-hidden divide-y divide-black/5 dark:divide-white/10">${inner}</div>`;
+
+  return `<div class="stagger">
+    <button data-action="back-from-settings" class="press inline-flex items-center gap-1.5 text-[14px] font-semibold text-wm-emerald mb-2 -ml-1">
+      <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>${t('common.back')}
+    </button>
+
+    ${card(t('set.appearance'),
+      settingBlock(t('set.language'),
+        segmented('set-lang', langVal, [{ v: 'auto', label: t('common.auto') }, { v: 'de', label: 'DE' }, { v: 'en', label: 'EN' }])
+      ) +
+      settingBlock(t('set.theme'),
+        segmented('set-theme', themeVal, [
+          { v: 'system', label: t('set.theme.system') }, { v: 'light', label: t('set.theme.light') }, { v: 'dark', label: t('set.theme.dark') }])
+      ) +
+      settingBlock(t('set.unit'),
+        segmented('set-unit', s.unit, [{ v: 'km', label: 'km' }, { v: 'mi', label: 'mi' }])
+      )
+    )}
+
+    ${card(t('set.challenge'),
+      settingRow(t('set.challenge.on'), toggleSwitch('toggle-challenge', s.challengeEnabled), t('set.challenge.d')) +
+      (s.challengeEnabled ? settingRow(t('set.weeklygoal'),
+        `<div class="flex items-center gap-2">
+           <button data-action="goal-step" data-amount="-5" class="w-8 h-8 rounded-full grid place-items-center bg-black/5 dark:bg-white/10 text-lg font-light active:scale-90 transition">−</button>
+           <span class="text-[15px] font-bold tabular-nums w-20 text-center">${fmtDistU(goal)}</span>
+           <button data-action="goal-step" data-amount="5" class="w-8 h-8 rounded-full grid place-items-center bg-black/5 dark:bg-white/10 text-lg font-light active:scale-90 transition">+</button>
+         </div>`) : '')
+    )}
+
+    ${card(t('set.notifications'),
+      settingRow(t('set.notifications'), toggleSwitch('toggle-notifications', s.notifications), t('set.notifications.d'))
+    )}
+
+    ${card(t('set.account'), accountCard())}
+
+    ${card(t('set.data'),
+      `<button data-action="reset" class="w-full text-left px-4 py-3.5 text-[14px] font-semibold text-wm-red active:bg-black/5 dark:active:bg-white/10 transition">${t('set.reset')}</button>`
+    )}
+
+    ${card(t('set.about'),
+      settingRow(t('set.version'), `<span class="text-[13px] font-semibold text-ink-900/55 dark:text-ink-50/55 tabular-nums">${APP_VERSION}</span>`) +
+      `<div class="px-4 py-3 text-[12px] text-ink-900/45 dark:text-ink-50/45">⚽️ WM 2026 · ${en ? 'Run Challenge' : 'Lauf-Challenge'}</div>`
+    )}
+
+    <div class="h-4"></div>
+  </div>`;
+}
+
 /* ------------------------------------------------------------------ *
  * 7) RENDER-DISPATCH
  * ------------------------------------------------------------------ */
@@ -1084,9 +1679,17 @@ function render() {
     return;
   }
 
-  const VIEWS = { today: viewToday, schedule: viewSchedule, table: viewTable, challenge: viewChallenge };
-  const TITLES = { today: 'Übersicht', schedule: 'Spielplan', table: 'Tabellen', challenge: 'Challenge' };
+  // Info-Modus: Challenge-Tab existiert nicht → ggf. auf „Heute" umlenken
+  if (state.tab === 'challenge' && !state.settings.challengeEnabled) state.tab = 'today';
+
+  const VIEWS = { today: viewToday, schedule: viewSchedule, table: viewTable, challenge: viewChallenge, settings: viewSettings };
+  const TITLES = {
+    today: t('title.today'), schedule: t('title.schedule'), table: t('title.table'),
+    challenge: t('title.challenge'), settings: t('title.settings'),
+  };
   const view = VIEWS[state.tab] || viewToday;
+
+  applyNav();   // Sprache der Nav + Sichtbarkeit des Challenge-Tabs
 
   app.innerHTML = `<div class="tab-enter">${view()}</div>`;
   document.getElementById('header-title').textContent = TITLES[state.tab] || 'WM 2026';
@@ -1112,8 +1715,8 @@ function setGreeting() {
   const el = document.getElementById('header-greet');
   if (!el) return;
   const h = new Date().getHours();
-  const greet = h < 5 ? 'Gute Nacht' : h < 11 ? 'Guten Morgen' : h < 17 ? 'Guten Tag' : h < 22 ? 'Guten Abend' : 'Gute Nacht';
-  el.textContent = `${greet} 👋`;
+  const key = h < 5 ? 'greet.night' : h < 11 ? 'greet.morning' : h < 17 ? 'greet.day' : h < 22 ? 'greet.evening' : 'greet.night';
+  el.textContent = `${t(key)} 👋`;
 }
 
 /* ------------------------------------------------------------------ *
@@ -1141,69 +1744,426 @@ function stopCountdown() { if (countdownTimer) { clearInterval(countdownTimer); 
 /* ------------------------------------------------------------------ *
  * 7c) SPIEL-DETAIL-SHEET (Bottom-Sheet)
  * ------------------------------------------------------------------ */
+/* ------------------------------------------------------------------ *
+ * 7c) SPIEL-DETAIL — Daten (Aufstellung, Statistik, Verlauf)
+ * ------------------------------------------------------------------ *
+ * Live (Worker konfiguriert + fixtureId vorhanden): echte Daten via
+ *   GET {apiBase}/api/match?fixture=ID  (Aufstellung mit Spieler-Fotos,
+ *   Statistik, Events). Sonst: deterministisch generierte Demo-Daten,
+ *   damit die Oberfläche sofort & offline funktioniert.
+ * ------------------------------------------------------------------ */
+function hashStr(s) { let h = 2166136261; for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); } return h >>> 0; }
+function makeRng(seed) { let a = seed >>> 0; return () => { a = a + 0x6D2B79F5 | 0; let x = Math.imul(a ^ a >>> 15, 1 | a); x = x + Math.imul(x ^ x >>> 7, 61 | x) ^ x; return ((x ^ x >>> 14) >>> 0) / 4294967296; }; }
+
+const FIRST_NAMES = ['Leon','Luca','Noah','Marco','Diego','Yusuf','Omar','Ivan','Hugo','Mateo','Liam','Kai','Theo','Adam','Felix','Bruno','Aaron','Nico','Ezra','Samir','Joao','Pedro','Carlos','Andre'];
+const LAST_NAMES  = ['Silva','Müller','Rossi','García','Kovač','Diallo','Hassan','Nowak','Andersen','Tanaka','Lopez','Bauer','Costa','Haidari','Okafor','Pereira','Schmidt','Moreau','Novak','Vidic','Mendez','Yilmaz','Fernandes','Beck'];
+const FORMATIONS  = [[4,3,3],[4,2,3,1],[4,4,2],[3,5,2],[4,1,4,1]];
+
+function teamColor(code) { const h = hashStr('jersey' + (code || '')) % 360; return `hsl(${h} 60% 46%)`; }
+function lastNameOf(n) { const p = n.trim().split(/\s+/); return p[p.length - 1]; }
+function initials(n) { const p = n.trim().split(/\s+/); return ((p[0] || '')[0] || '') + ((p[p.length - 1] || '')[0] || ''); }
+function posLabel(li, nL) { if (li === 0) return t('pos.gk'); if (li === nL - 1) return t('pos.fwd'); if (li === 1) return t('pos.def'); return t('pos.mid'); }
+
+/** Demo-Kader (Startelf + Bank) deterministisch erzeugen */
+function synthSquad(seed) {
+  const rng = makeRng(seed);
+  const formation = FORMATIONS[Math.floor(rng() * FORMATIONS.length)];
+  const lines = [1, ...formation];
+  const usedN = new Set(), usedNum = new Set();
+  const pick = (arr) => arr[Math.floor(rng() * arr.length)];
+  const name = () => { let n, g = 0; do { n = pick(FIRST_NAMES).charAt(0) + '. ' + pick(LAST_NAMES); g++; } while (usedN.has(n) && g < 10); usedN.add(n); return n; };
+  const num = (fixed) => { if (fixed && !usedNum.has(fixed)) { usedNum.add(fixed); return fixed; } let x, g = 0; do { x = 1 + Math.floor(rng() * 30); g++; } while (usedNum.has(x) && g < 50); usedNum.add(x); return x; };
+  const startXI = [];
+  lines.forEach((count, li) => { for (let j = 0; j < count; j++) startXI.push({ num: num(li === 0 ? 1 : 0), name: name(), pos: posLabel(li, lines.length), li, j, count }); });
+  const subs = []; for (let i = 0; i < 7; i++) subs.push({ num: num(0), name: name(), pos: i === 0 ? t('pos.gk') : '' });
+  return { formation: formation.join('-'), coach: pick(FIRST_NAMES).charAt(0) + '. ' + pick(LAST_NAMES), startXI, subs, lines };
+}
+
+function synthStats(m, seed) {
+  const rng = makeRng(seed ^ 0x9e3779b9);
+  const gh = m.score.home || 0, ga = m.score.away || 0;
+  const cl = (v, lo, hi) => Math.max(lo, Math.min(hi, Math.round(v)));
+  const posH = cl(50 + (gh - ga) * 3 + (rng() * 16 - 8), 32, 68);
+  const mk = (base, span, bias) => cl(base + rng() * span + bias, 0, 99);
+  const shotsH = mk(9, 9, gh * 1.5), shotsA = mk(9, 9, ga * 1.5);
+  return {
+    home: { possession: posH, shots: shotsH, shotsOn: cl(Math.max(gh, shotsH * (0.3 + rng() * 0.2)), gh, shotsH), passes: cl(posH * 8 + rng() * 80, 0, 900), passAcc: mk(80, 12, 0), corners: mk(3, 7, 0), fouls: mk(7, 9, 0), yellow: mk(1, 3, 0), offsides: mk(1, 4, 0), saves: mk(2, 4, ga) },
+    away: { possession: 100 - posH, shots: shotsA, shotsOn: cl(Math.max(ga, shotsA * (0.3 + rng() * 0.2)), ga, shotsA), passes: cl((100 - posH) * 8 + rng() * 80, 0, 900), passAcc: mk(80, 12, 0), corners: mk(3, 7, 0), fouls: mk(7, 9, 0), yellow: mk(1, 3, 0), offsides: mk(1, 4, 0), saves: mk(2, 4, gh) },
+  };
+}
+
+function synthEvents(m, seed, home, away) {
+  if (!isPlayed(m)) return [];
+  const rng = makeRng(seed ^ 0x12345);
+  const cap = m.status === 'IN_PLAY' && m.minute ? m.minute : 90;
+  const evs = [];
+  const addGoals = (side, n, xi) => {
+    for (let i = 0; i < n; i++) {
+      const scorer = xi[3 + Math.floor(rng() * (xi.length - 3))] || xi[xi.length - 1];
+      evs.push({ minute: 1 + Math.floor(rng() * cap), type: rng() < 0.12 ? 'penalty' : 'goal', side, player: scorer.name });
+    }
+  };
+  addGoals('home', m.score.home || 0, home.startXI);
+  addGoals('away', m.score.away || 0, away.startXI);
+  const cards = Math.floor(rng() * 4);
+  for (let i = 0; i < cards; i++) {
+    const side = rng() < 0.5 ? 'home' : 'away';
+    const xi = (side === 'home' ? home : away).startXI;
+    evs.push({ minute: 1 + Math.floor(rng() * cap), type: rng() < 0.12 ? 'red' : 'yellow', side, player: xi[Math.floor(rng() * xi.length)].name });
+  }
+  return evs.sort((x, y) => x.minute - y.minute);
+}
+
+function buildMatchDetail(m) {
+  const home = synthSquad(hashStr(m.id + '|H|' + m.home));
+  const away = synthSquad(hashStr(m.id + '|A|' + m.away));
+  return {
+    lineups: { home, away },
+    stats: isPlayed(m) ? synthStats(m, hashStr(m.id)) : null,
+    events: synthEvents(m, hashStr(m.id), home, away),
+    predicted: !isPlayed(m),
+    demo: true,
+  };
+}
+
+const currentDetail = (m) => m._detail || (m._detail = buildMatchDetail(m));
+
+/** Im Live-Betrieb echte Details vom Worker nachladen (ersetzt Demo) */
+async function upgradeDetail(m) {
+  if (!(CONFIG.apiBase && m.fixtureId)) return false;
+  if (m._detail && !m._detail.demo) return false;
+  try {
+    const r = await fetch(`${CONFIG.apiBase}/api/match?fixture=${encodeURIComponent(m.fixtureId)}`);
+    if (!r.ok) return false;
+    const d = await r.json();
+    if (d && d.lineups) { m._detail = { predicted: !isPlayed(m), ...d, demo: false }; return true; }
+  } catch {}
+  return false;
+}
+
+/* ------------------------------------------------------------------ *
+ * 7d) SPIEL-DETAIL — Rendering
+ * ------------------------------------------------------------------ */
+window.avatarErr = (img) => {
+  const s = document.createElement('span');
+  s.className = img.className.replace('object-cover', '') + ' grid place-items-center font-bold text-white';
+  s.style.cssText = img.style.cssText.replace(/box-shadow[^;]*;?/, '') + `background:${img.dataset.color};box-shadow:0 0 0 2px rgba(255,255,255,.25);font-size:${Math.round(parseInt(img.style.width) * 0.34)}px`;
+  s.textContent = img.dataset.ini;
+  img.replaceWith(s);
+};
+
+function avatarHTML(p, color, size) {
+  const s = size || 38, ini = initials(p.name).toUpperCase();
+  if (p.photo) {
+    return `<img src="${p.photo}" alt="" loading="lazy" data-ini="${ini}" data-color="${color}"
+      class="rounded-full object-cover" style="width:${s}px;height:${s}px;background:${color};box-shadow:0 0 0 2px rgba(255,255,255,.6)" onerror="avatarErr(this)">`;
+  }
+  return `<span class="rounded-full grid place-items-center font-bold text-white"
+    style="width:${s}px;height:${s}px;background:${color};box-shadow:0 0 0 2px rgba(255,255,255,.25);font-size:${Math.round(s * 0.34)}px">${ini}</span>`;
+}
+
+/** Fußball-Trikot mit Rückennummer (statt runder Bubble) */
+function jersey(color, number, size) {
+  const s = size || 38;
+  return `<span class="relative inline-block" style="width:${s}px;height:${s}px">
+    <svg viewBox="0 0 48 48" width="${s}" height="${s}" style="display:block;filter:drop-shadow(0 1px 2px rgba(0,0,0,.45))">
+      <path d="M16 4 L8 8 L3 18 L11 22 L13 16 L13 44 L35 44 L35 16 L37 22 L45 18 L40 8 L32 4 C29 9 19 9 16 4 Z"
+            fill="${color}" stroke="rgba(255,255,255,.7)" stroke-width="1.5" stroke-linejoin="round"/>
+    </svg>
+    <span class="absolute inset-x-0 font-extrabold text-white text-center" style="bottom:${Math.round(s * 0.1)}px;font-size:${Math.round(s * 0.38)}px;text-shadow:0 1px 2px rgba(0,0,0,.5)">${number}</span>
+  </span>`;
+}
+
+function pitchChip(p, xPct, yPct, color) {
+  return `<div class="absolute flex flex-col items-center" style="left:${xPct.toFixed(1)}%;top:${yPct.toFixed(1)}%;transform:translate(-50%,-50%);width:66px">
+    ${jersey(color, p.num, 38)}
+    <span class="mt-0.5 text-[11px] font-semibold text-white leading-tight text-center truncate w-[64px]" style="text-shadow:0 1px 3px rgba(0,0,0,.9)">${lastNameOf(p.name)}</span>
+  </div>`;
+}
+
+function placeXI(xi, lines, isHome, color) {
+  // Jede Mannschaft nutzt ~36 % der Höhe → klarer Abstand an der Mittellinie (kein Überlappen)
+  const nL = lines.length, span = nL > 1 ? 0.36 / (nL - 1) : 0;
+  return xi.map((p) => {
+    const y = isHome ? (0.95 - p.li * span) : (0.05 + p.li * span);
+    // Volle Reihen nach außen ziehen, aber maßvoll (Mischung aus eng & weit)
+    const m = p.count >= 5 ? 0.12 : p.count === 4 ? 0.16 : 0.20;
+    const x = p.count <= 1 ? 0.5 : m + (p.j / (p.count - 1)) * (1 - 2 * m);
+    return pitchChip(p, x * 100, y * 100, color);
+  }).join('');
+}
+
+function benchRow(label, squad, color) {
+  const chips = squad.subs.map((p) => `
+    <div class="flex flex-col items-center shrink-0 w-[52px]">
+      <div class="relative">${avatarHTML(p, color, 32)}
+        <span class="absolute -bottom-1 -right-1 text-[8px] font-bold text-white rounded-full px-1 min-w-[13px] text-center" style="background:rgba(0,0,0,.6)">${p.num}</span>
+      </div>
+      <span class="mt-1 text-[9px] font-medium leading-none text-center truncate w-[50px]">${lastNameOf(p.name)}</span>
+    </div>`).join('');
+  return `<div class="mt-3">
+    <p class="text-[11px] font-bold uppercase tracking-wide text-ink-900/45 dark:text-ink-50/45 mb-2">${label}</p>
+    <div class="flex gap-2 overflow-x-auto -mx-1 px-1 pb-1">${chips}</div>
+  </div>`;
+}
+
+function renderLineupTab(m, detail) {
+  if (!detail.lineups) return `<p class="text-center text-[13px] text-ink-900/45 dark:text-ink-50/45 py-8">${t('md.noLineup')}</p>`;
+  const h = team(m.home), a = team(m.away);
+  const hc = teamColor(h.code), ac = teamColor(a.code);
+  const H = detail.lineups.home, A = detail.lineups.away;
+
+  return `
+    ${detail.predicted ? `<p class="text-[11px] font-semibold text-wm-gold text-center mb-2">${t('md.probable')}</p>` : ''}
+    <div class="flex items-center justify-between text-[12px] font-semibold mb-2 px-1">
+      <span class="inline-flex items-center gap-1.5">${crest(h, 'crest-sm')} ${H.formation}</span>
+      <span class="inline-flex items-center gap-1.5">${A.formation} ${crest(a, 'crest-sm')}</span>
+    </div>
+    <div class="relative rounded-2xl overflow-hidden" style="height:620px;background:linear-gradient(180deg,#15803d,#166534 50%,#15803d)">
+      <!-- Spielfeld-Markierungen -->
+      <div class="absolute inset-2 rounded-xl" style="border:2px solid rgba(255,255,255,.18)"></div>
+      <div class="absolute left-2 right-2" style="top:50%;height:0;border-top:2px solid rgba(255,255,255,.18)"></div>
+      <div class="absolute rounded-full" style="left:50%;top:50%;width:84px;height:84px;transform:translate(-50%,-50%);border:2px solid rgba(255,255,255,.18)"></div>
+      <div class="absolute" style="left:50%;top:50%;width:6px;height:6px;transform:translate(-50%,-50%);background:rgba(255,255,255,.35);border-radius:9999px"></div>
+      <div class="absolute" style="left:28%;right:28%;top:-2px;height:46px;border:2px solid rgba(255,255,255,.16);border-top:none;border-radius:0 0 8px 8px"></div>
+      <div class="absolute" style="left:28%;right:28%;bottom:-2px;height:46px;border:2px solid rgba(255,255,255,.16);border-bottom:none;border-radius:8px 8px 0 0"></div>
+      ${placeXI(A.startXI, A.lines, false, ac)}
+      ${placeXI(H.startXI, H.lines, true, hc)}
+    </div>
+    <div class="flex items-center justify-between text-[11px] text-ink-900/55 dark:text-ink-50/55 mt-3 px-1">
+      <span>👔 ${t('md.coach')}: <b>${H.coach}</b></span>
+      <span><b>${A.coach}</b> :${t('md.coach')} 👔</span>
+    </div>
+    ${benchRow(`${t('md.bench')} · ${h.name}`, H, hc)}
+    ${benchRow(`${t('md.bench')} · ${a.name}`, A, ac)}
+    ${detail.demo ? `<p class="text-[10px] text-ink-900/35 dark:text-ink-50/35 text-center mt-4">${t('md.demo')}</p>` : ''}`;
+}
+
+function statBar(label, hv, av, suffix) {
+  const total = (hv + av) || 1, hp = (hv / total) * 100;
+  const sfx = suffix || '';
+  return `<div class="py-2.5">
+    <div class="flex items-center justify-between text-[13px] font-semibold tabular-nums mb-1.5">
+      <span>${hv}${sfx}</span><span class="text-[11px] font-medium text-ink-900/50 dark:text-ink-50/50">${label}</span><span>${av}${sfx}</span>
+    </div>
+    <div class="flex h-2 rounded-full overflow-hidden bg-black/[0.06] dark:bg-white/[0.08]">
+      <div class="h-full" style="width:${hp.toFixed(1)}%;background:#10B981"></div>
+      <div class="h-full flex-1" style="background:#0A84FF"></div>
+    </div>
+  </div>`;
+}
+
+function renderStatsTab(m, detail) {
+  if (!detail.stats) return `<p class="text-center text-[13px] text-ink-900/45 dark:text-ink-50/45 py-8">${t('md.noStats')}</p>`;
+  const h = team(m.home), a = team(m.away), S = detail.stats;
+  const rows = [
+    ['st.possession', S.home.possession, S.away.possession, '%'],
+    ['st.shots', S.home.shots, S.away.shots, ''],
+    ['st.shotsOn', S.home.shotsOn, S.away.shotsOn, ''],
+    ['st.passes', S.home.passes, S.away.passes, ''],
+    ['st.passAcc', S.home.passAcc, S.away.passAcc, '%'],
+    ['st.corners', S.home.corners, S.away.corners, ''],
+    ['st.fouls', S.home.fouls, S.away.fouls, ''],
+    ['st.offsides', S.home.offsides, S.away.offsides, ''],
+    ['st.yellow', S.home.yellow, S.away.yellow, ''],
+    ['st.saves', S.home.saves, S.away.saves, ''],
+  ];
+  return `
+    <div class="flex items-center justify-between text-[12px] font-bold mb-2 px-1">
+      <span class="inline-flex items-center gap-1.5">${crest(h, 'crest-sm')} ${h.name}</span>
+      <span class="inline-flex items-center gap-1.5">${a.name} ${crest(a, 'crest-sm')}</span>
+    </div>
+    <div class="rounded-xl2 glass-card px-4 divide-y divide-black/5 dark:divide-white/10">
+      ${rows.map((r) => statBar(t(r[0]), r[1], r[2], r[3])).join('')}
+    </div>
+    ${detail.demo ? `<p class="text-[10px] text-ink-900/35 dark:text-ink-50/35 text-center mt-3">${t('md.demo')}</p>` : ''}`;
+}
+
+const EV_ICON = { goal: '⚽️', penalty: '⚽️', owngoal: '🥅', yellow: '🟨', red: '🟥', subst: '🔁' };
+
+function renderEventsTab(m, detail) {
+  if (!detail.events || !detail.events.length) return `<p class="text-center text-[13px] text-ink-900/45 dark:text-ink-50/45 py-8">${t('md.noEvents')}</p>`;
+  const rows = detail.events.map((e) => {
+    const home = e.side === 'home';
+    const typeLabel = t('ev.' + e.type);
+    const cell = `
+      <div class="flex items-center gap-2 ${home ? '' : 'flex-row-reverse text-right'}">
+        <span class="text-base leading-none">${EV_ICON[e.type] || '•'}</span>
+        <div class="min-w-0">
+          <p class="text-[13px] font-semibold truncate">${e.player}</p>
+          <p class="text-[10px] text-ink-900/45 dark:text-ink-50/45">${typeLabel}</p>
+        </div>
+      </div>`;
+    return `<div class="flex items-center gap-2 py-2">
+      <div class="flex-1 min-w-0">${home ? cell : ''}</div>
+      <span class="shrink-0 text-[11px] font-bold tabular-nums px-2 py-0.5 rounded-full bg-black/5 dark:bg-white/10">${e.minute}'</span>
+      <div class="flex-1 min-w-0">${home ? '' : cell}</div>
+    </div>`;
+  }).join('<div class="h-px bg-black/5 dark:bg-white/10"></div>');
+  return `<div class="rounded-xl2 glass-card px-3">${rows}</div>
+    ${detail.demo ? `<p class="text-[10px] text-ink-900/35 dark:text-ink-50/35 text-center mt-3">${t('md.demo')}</p>` : ''}`;
+}
+
+function renderInfoTab(m) {
+  const live = m.status === 'IN_PLAY', played = isPlayed(m), d = new Date(m.utcDate), en = getLang() === 'en';
+  const stageLabel = (KO_STAGES.find(([k]) => k === m.stage) || [])[1] || (m.group && m.group !== '–' ? `${en ? 'Group' : 'Gruppe'} ${m.group}` : 'WM 2026');
+  const info = (label, val) => `<div class="flex items-center justify-between py-3"><span class="text-[13px] text-ink-900/50 dark:text-ink-50/50">${label}</span><span class="text-[14px] font-semibold text-right">${val}</span></div>`;
+  const locale = en ? 'en-GB' : 'de-DE';
+  return `<div class="rounded-xl2 glass-card px-4 divide-y divide-black/5 dark:divide-white/10">
+    ${info(en ? 'Competition' : 'Wettbewerb', 'FIFA WM 2026')}
+    ${info(en ? 'Round' : 'Runde', stageLabel)}
+    ${info(en ? 'Date' : 'Datum', d.toLocaleDateString(locale, { weekday: 'long', day: '2-digit', month: 'long' }))}
+    ${info(en ? 'Kick-off' : 'Anstoß', fmtTime(m.utcDate) + (en ? '' : ' Uhr'))}
+    ${m.venue ? info(en ? 'Stadium' : 'Stadion', m.venue) : ''}
+    ${info('Status', live ? `${en ? 'Live' : 'Läuft'} – ${liveMinute(m)}` : (played ? (en ? 'Finished' : 'Beendet') : (en ? 'Not started' : 'Noch nicht angepfiffen')))}
+  </div>`;
+}
+
+let currentSheetMatch = null;
+let matchSheetTab = 'lineup';
+
+function renderSheetContent() {
+  const m = currentSheetMatch;
+  const host = document.getElementById('sheet-content');
+  if (!m || !host) return;
+  const detail = currentDetail(m);
+  const tabs = [['lineup', 'md.lineup'], ['stats', 'md.stats'], ['events', 'md.events'], ['info', 'md.info']];
+  const seg = `<div class="flex gap-1 p-1 rounded-xl bg-black/5 dark:bg-white/10 mb-4 sticky top-0 z-10">
+    ${tabs.map(([k, lk]) => `<button data-action="sheet-tab" data-tab="${k}"
+      class="flex-1 py-2 rounded-lg text-[12px] font-semibold transition press ${k === matchSheetTab
+        ? 'bg-white dark:bg-ink-800 shadow text-ink-900 dark:text-ink-50'
+        : 'text-ink-900/50 dark:text-ink-50/50'}">${t(lk)}</button>`).join('')}
+  </div>`;
+  let panel;
+  if (matchSheetTab === 'lineup') panel = renderLineupTab(m, detail);
+  else if (matchSheetTab === 'stats') panel = renderStatsTab(m, detail);
+  else if (matchSheetTab === 'events') panel = renderEventsTab(m, detail);
+  else panel = renderInfoTab(m);
+  host.innerHTML = seg + `<div>${panel}</div>`;
+}
+
 function openMatchSheet(id) {
   const m = state.data.matches.find((x) => x.id === id);
   if (!m) return;
+  currentSheetMatch = m;
+  matchSheetTab = 'lineup';
   const h = team(m.home), a = team(m.away);
-  const live = m.status === 'IN_PLAY', played = isPlayed(m);
-  const d = new Date(m.utcDate);
+  const live = m.status === 'IN_PLAY', played = isPlayed(m), en = getLang() === 'en';
 
   const statusPill = live
     ? `<span class="inline-flex items-center gap-1.5 text-[12px] font-bold px-3 py-1 rounded-full bg-wm-red text-white"><span class="w-1.5 h-1.5 rounded-full bg-white live-dot"></span>${liveMinute(m)}</span>`
-    : played ? `<span class="text-[12px] font-semibold px-3 py-1 rounded-full bg-black/5 dark:bg-white/10 text-ink-900/55 dark:text-ink-50/55">Endstand</span>`
-    : `<span class="text-[12px] font-semibold px-3 py-1 rounded-full bg-wm-emerald/12 text-wm-emerald">Geplant</span>`;
+    : played ? `<span class="text-[12px] font-semibold px-3 py-1 rounded-full bg-black/5 dark:bg-white/10 text-ink-900/55 dark:text-ink-50/55">${en ? 'Full time' : 'Endstand'}</span>`
+    : `<span class="text-[12px] font-semibold px-3 py-1 rounded-full bg-wm-emerald/12 text-wm-emerald">${en ? 'Scheduled' : 'Geplant'}</span>`;
   const center = played
     ? `<div class="score text-[44px] leading-none ${live ? 'text-wm-red' : ''}">${m.score.home}<span class="opacity-30 mx-2">:</span>${m.score.away}</div>`
     : `<div class="text-3xl font-extrabold text-ink-900/40 dark:text-ink-50/40">VS</div>`;
-  const stageLabel = (KO_STAGES.find(([k]) => k === m.stage) || [])[1] || (m.group && m.group !== '–' ? `Gruppe ${m.group}` : 'WM 2026');
-  const info = (label, val) => `<div class="flex items-center justify-between py-3"><span class="text-[13px] text-ink-900/50 dark:text-ink-50/50">${label}</span><span class="text-[14px] font-semibold text-right">${val}</span></div>`;
 
   const sheet = document.createElement('div');
   sheet.id = 'match-sheet';
   sheet.innerHTML = `
     <div class="sheet-backdrop" data-action="close-sheet"></div>
-    <div class="sheet max-w-md mx-auto bg-ink-50 dark:bg-ink-950 rounded-t-[28px] px-5 pb-8 pt-1 max-h-[88vh] overflow-y-auto">
-      <div class="grabber"></div>
+    <div class="sheet max-w-md mx-auto bg-ink-50 dark:bg-ink-950 rounded-t-[28px] px-5 pb-8 pt-1 max-h-[92vh] overflow-y-auto">
+      <div class="grabber" data-drag-handle></div>
       <div class="flex justify-center mb-4">${statusPill}</div>
       <div class="flex items-center justify-between gap-3 mb-5">
         <div class="flex-1 flex flex-col items-center gap-2 text-center min-w-0">${crest(h, 'crest-lg', true)}<span class="text-[14px] font-semibold">${h.name}</span></div>
         <div class="shrink-0 text-center">${center}</div>
         <div class="flex-1 flex flex-col items-center gap-2 text-center min-w-0">${crest(a, 'crest-lg', true)}<span class="text-[14px] font-semibold">${a.name}</span></div>
       </div>
-      <div class="rounded-xl2 glass-card px-4 divide-y divide-black/5 dark:divide-white/10">
-        ${info('Wettbewerb', 'FIFA WM 2026')}
-        ${info('Runde', stageLabel)}
-        ${info('Datum', d.toLocaleDateString('de-DE', { weekday: 'long', day: '2-digit', month: 'long' }))}
-        ${info('Anstoß', fmtTime(m.utcDate) + ' Uhr')}
-        ${m.venue ? info('Stadion', m.venue) : ''}
-        ${info('Status', live ? `Läuft – ${liveMinute(m)}` : (played ? 'Beendet' : 'Noch nicht angepfiffen'))}
-      </div>
-      <button data-action="close-sheet" class="press w-full mt-5 py-3 rounded-xl bg-black/5 dark:bg-white/10 font-semibold text-[14px]">Schließen</button>
+      <div id="sheet-content"></div>
+      <button data-action="close-sheet" class="press w-full mt-5 py-3 rounded-xl bg-black/5 dark:bg-white/10 font-semibold text-[14px]">${t('common.close')}</button>
     </div>`;
   document.body.appendChild(sheet);
+  renderSheetContent();
+  makeSheetDraggable(sheet, closeSheet);
   if (navigator.vibrate) navigator.vibrate(8);
+
+  // Live: echte Aufstellungen/Statistiken nachladen und Inhalt aktualisieren
+  upgradeDetail(m).then((ok) => { if (ok && currentSheetMatch === m && document.getElementById('sheet-content')) renderSheetContent(); });
 }
 
 function closeSheet() {
   const s = document.getElementById('match-sheet');
   if (!s) return;
+  currentSheetMatch = null;
   s.querySelector('.sheet-backdrop')?.classList.add('closing');
   s.querySelector('.sheet')?.classList.add('closing');
   setTimeout(() => s.remove(), 260);
+}
+
+/**
+ * Macht ein Bottom-Sheet per Griff (data-drag-handle/.grabber) ziehbar:
+ *  - nach unten ziehen → folgt dem Finger, Backdrop blendet aus
+ *  - weit/schnell genug → schließen (closeFn), sonst zurückschnappen
+ *  - leicht nach oben ziehen → Sheet auf volle Höhe „aufziehen"
+ */
+function makeSheetDraggable(root, closeFn) {
+  const sheet = root.querySelector('.sheet');
+  const handle = root.querySelector('[data-drag-handle], .grabber');
+  const backdrop = root.querySelector('.sheet-backdrop');
+  if (!sheet || !handle) return;
+  handle.style.touchAction = 'none';
+  handle.style.cursor = 'grab';
+
+  let startY = 0, curDy = 0, height = 0, dragging = false;
+
+  const onMove = (e) => {
+    if (!dragging) return;
+    const y = e.clientY != null ? e.clientY : (e.touches && e.touches[0].clientY);
+    curDy = y - startY;
+    if (curDy >= 0) {
+      sheet.style.transform = `translateY(${curDy}px)`;
+      if (backdrop) backdrop.style.opacity = String(Math.max(0, 1 - curDy / (height || 500)));
+    } else {
+      // nach oben: volle Höhe freigeben (sanft)
+      sheet.style.transform = `translateY(${Math.max(curDy, -24)}px)`;
+      sheet.style.maxHeight = '94vh';
+    }
+  };
+
+  const end = () => {
+    if (!dragging) return;
+    dragging = false;
+    window.removeEventListener('pointermove', onMove);
+    window.removeEventListener('pointerup', end);
+    sheet.style.transition = 'transform .26s cubic-bezier(.22,1,.36,1)';
+    if (curDy > Math.max(140, height * 0.28)) {
+      closeFn();
+    } else {
+      sheet.style.transform = 'translateY(0)';
+      if (backdrop) backdrop.style.opacity = '';
+      setTimeout(() => { sheet.style.transition = ''; sheet.style.transform = ''; }, 280);
+    }
+  };
+
+  const onDown = (e) => {
+    dragging = true;
+    startY = e.clientY != null ? e.clientY : (e.touches && e.touches[0].clientY);
+    curDy = 0;
+    height = sheet.getBoundingClientRect().height;
+    sheet.style.transition = 'none';
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', end);
+  };
+
+  handle.addEventListener('pointerdown', onDown);
 }
 
 /* ------------------------------------------------------------------ *
  * 8) AKTIONEN / EVENTS  (Event-Delegation)
  * ------------------------------------------------------------------ */
 let runSeq = 0;
+let prevTab = 'today';   // gemerkter Tab, um aus den Einstellungen zurückzukehren
 
 function addRun(delta) {
   delta = Math.round(delta * 10) / 10;
   if (!delta) return;
 
   const before = snapshot();
-  state.runs.push({ id: `${Date.now()}-${runSeq++}`, km: delta, ts: Date.now() });
+  const run = { id: `${Date.now()}-${runSeq++}`, km: delta, ts: Date.now() };
+  state.runs.push(run);
   persist();
+  if (delta > 0) cloudInsertRun(run).then(refreshCommunity);   // Cloud + Ranking (No-Op wenn ausgeloggt)
   const after = snapshot();
 
   // Neu freigeschaltete Badges ermitteln & merken
@@ -1225,15 +2185,89 @@ function addRun(delta) {
   render();
 }
 
-function removeRun(id) {
-  state.runs = state.runs.filter((r) => r.id !== id);
-  // Badges neu bewerten (nur entfernen, nicht neu feiern)
+/** Badge-Set mit dem aktuellen Stand abgleichen (nur halten, was noch erfüllt ist) */
+function reconcileBadges() {
   const snap = snapshot();
   state.seenBadges = new Set([...state.seenBadges].filter((bid) => {
     const def = BADGES.find((b) => b.id === bid);
     return def ? def.test(snap) : false;
   }));
+}
+
+function removeRun(id) {
+  const gone = state.runs.find((r) => r.id === id);
+  state.runs = state.runs.filter((r) => r.id !== id);
+  reconcileBadges();   // Badges neu bewerten (nur entfernen, nicht neu feiern)
   persist();
+  if (gone && gone.rid) cloudDeleteRun(gone.rid).then(refreshCommunity);
+  render();
+}
+
+/* ---- Lauf bearbeiten (Distanz + Datum/Uhrzeit) ---- */
+const pad0 = (n) => String(n).padStart(2, '0');
+/** ts → Wert für <input type="datetime-local"> (lokale Zeit) */
+function tsToLocalInput(ts) {
+  const d = new Date(ts);
+  return `${d.getFullYear()}-${pad0(d.getMonth() + 1)}-${pad0(d.getDate())}T${pad0(d.getHours())}:${pad0(d.getMinutes())}`;
+}
+
+function openRunEditor(id) {
+  const r = state.runs.find((x) => x.id === id);
+  if (!r) return;
+  const en = getLang() === 'en';
+  const dval = Math.round(fromKm(r.km) * 10) / 10;   // Rohwert (Punkt) für number-Input
+
+  const sheet = document.createElement('div');
+  sheet.id = 'run-editor';
+  sheet.innerHTML = `
+    <div class="sheet-backdrop" data-action="close-run-editor"></div>
+    <div class="sheet max-w-md mx-auto bg-ink-50 dark:bg-ink-950 rounded-t-[28px] px-5 pb-8 pt-1">
+      <div class="grabber" data-drag-handle></div>
+      <h3 class="text-[17px] font-bold text-center mt-1 mb-5">${t('run.edit')}</h3>
+
+      <label class="block text-[12px] font-semibold text-ink-900/50 dark:text-ink-50/50 mb-1.5">${t('run.distance')} (${uLabel()})</label>
+      <input id="edit-km" type="number" inputmode="decimal" step="0.1" min="0.1" value="${dval}"
+             class="w-full mb-4 px-4 py-3 rounded-xl bg-black/[0.04] dark:bg-white/[0.06] text-[16px] font-semibold tabular-nums outline-none focus:ring-2 ring-wm-emerald/40"/>
+
+      <label class="block text-[12px] font-semibold text-ink-900/50 dark:text-ink-50/50 mb-1.5">${t('run.date')} & ${t('run.time')}</label>
+      <input id="edit-dt" type="datetime-local" value="${tsToLocalInput(r.ts)}"
+             class="w-full mb-6 px-4 py-3 rounded-xl bg-black/[0.04] dark:bg-white/[0.06] text-[16px] font-semibold outline-none focus:ring-2 ring-wm-emerald/40"/>
+
+      <div class="flex gap-3">
+        <button data-action="close-run-editor" class="press flex-1 py-3 rounded-xl bg-black/5 dark:bg-white/10 font-semibold text-[14px]">${t('common.cancel')}</button>
+        <button data-action="save-run" data-id="${r.id}" class="press flex-1 py-3 rounded-xl text-white font-semibold text-[14px] shadow-glow" style="background:linear-gradient(135deg,#10B981,#059669)">${t('common.save')}</button>
+      </div>
+    </div>`;
+  document.body.appendChild(sheet);
+  makeSheetDraggable(sheet, closeRunEditor);
+  if (navigator.vibrate) navigator.vibrate(6);
+}
+
+function closeRunEditor() {
+  const s = document.getElementById('run-editor');
+  if (!s) return;
+  s.querySelector('.sheet-backdrop')?.classList.add('closing');
+  s.querySelector('.sheet')?.classList.add('closing');
+  setTimeout(() => s.remove(), 260);
+}
+
+function saveRunEdit(id) {
+  const r = state.runs.find((x) => x.id === id);
+  if (!r) return;
+  const kmEl = document.getElementById('edit-km');
+  const dtEl = document.getElementById('edit-dt');
+  const val = parseFloat(kmEl && kmEl.value);
+  const km = toKm(val);
+  if (isNaN(km) || km <= 0) { kmEl?.focus(); return; }
+  r.km = Math.round(km * 10) / 10;
+  if (dtEl && dtEl.value) {
+    const ts = +new Date(dtEl.value);
+    if (!isNaN(ts)) r.ts = ts;
+  }
+  reconcileBadges();
+  persist();
+  cloudUpdateRun(r).then(refreshCommunity);
+  closeRunEditor();
   render();
 }
 
@@ -1241,7 +2275,8 @@ function submitKmFromInput() {
   const input = document.getElementById('km-input');
   if (!input) return;
   const val = parseFloat(input.value);
-  if (!isNaN(val) && val !== 0) addRun(val);
+  // Eingabe erfolgt in der Anzeigeeinheit → kanonisch in km speichern
+  if (!isNaN(val) && val !== 0) addRun(toKm(val));
   else input.value = '';
 }
 
@@ -1272,12 +2307,32 @@ document.addEventListener('click', (e) => {
       render();
       break;
 
+    case 'challenge-tab':
+      challengeTab = el.dataset.val;
+      render();
+      break;
+
+    case 'sched-filter':
+      scheduleFilter = el.dataset.val;
+      render();
+      break;
+
+    case 'standings-group':
+      standingsGroup = el.dataset.val;
+      render();
+      break;
+
     case 'open-match':
       openMatchSheet(el.dataset.id);
       break;
 
     case 'close-sheet':
       closeSheet();
+      break;
+
+    case 'sheet-tab':
+      matchSheetTab = el.dataset.tab;
+      renderSheetContent();
       break;
 
     case 'install':
@@ -1293,6 +2348,94 @@ document.addEventListener('click', (e) => {
       toggleTheme();
       break;
 
+    case 'open-settings':
+      if (state.tab !== 'settings') prevTab = state.tab;
+      state.tab = 'settings';
+      render();
+      window.scrollTo({ top: 0 });
+      break;
+
+    case 'back-from-settings':
+      state.tab = VALID_TABS.includes(prevTab) ? prevTab : 'today';
+      render();
+      window.scrollTo({ top: 0 });
+      break;
+
+    case 'onb-choose':
+      finishOnboarding(el.dataset.mode);
+      break;
+
+    case 'set-lang':
+      state.settings.lang = (el.dataset.val === 'auto') ? null : el.dataset.val;
+      persist(); cloudPushSettings(); applyNav(); render();
+      break;
+
+    case 'set-theme': {
+      const v = el.dataset.val;
+      save(LS.theme, v === 'system' ? null : v);
+      applyTheme(v === 'system' ? null : v);
+      render();
+      break;
+    }
+
+    case 'set-unit':
+      state.settings.unit = (el.dataset.val === 'mi') ? 'mi' : 'km';
+      persist(); cloudPushSettings(); render();
+      break;
+
+    case 'toggle-challenge':
+      state.settings.challengeEnabled = !state.settings.challengeEnabled;
+      if (!state.settings.challengeEnabled && state.tab === 'challenge') state.tab = 'today';
+      persist(); cloudPushSettings(); applyNav(); render();
+      break;
+
+    case 'goal-step': {
+      const amt = parseFloat(el.dataset.amount) || 0;
+      const cur = Math.max(1, Number(state.settings.weeklyGoalKm) || DEFAULT_SETTINGS.weeklyGoalKm);
+      state.settings.weeklyGoalKm = Math.max(1, Math.min(200, cur + amt));
+      persist(); cloudPushSettings(); render();
+      break;
+    }
+
+    case 'toggle-notifications':
+      state.settings.notifications = !state.settings.notifications;
+      persist(); cloudPushSettings(); render();
+      break;
+
+    case 'toggle-leaderboard':
+      state.settings.leaderboardOptin = !state.settings.leaderboardOptin;
+      persist(); cloudPushSettings().then(refreshCommunity); render();
+      break;
+
+    case 'open-auth':
+      openAuthSheet();
+      break;
+
+    case 'close-auth':
+      closeAuthSheet();
+      break;
+
+    case 'auth-mode':
+      authMode = el.dataset.val;
+      refreshAuthSheet();
+      break;
+
+    case 'auth-submit':
+      authSubmit();
+      break;
+
+    case 'auth-magic':
+      authMagic();
+      break;
+
+    case 'auth-forgot':
+      authForgot();
+      break;
+
+    case 'logout':
+      authLogout();
+      break;
+
     case 'step-km':
       stepInput(parseFloat(el.dataset.amount));
       break;
@@ -1303,6 +2446,18 @@ document.addEventListener('click', (e) => {
 
     case 'delete-run':
       removeRun(el.dataset.id);
+      break;
+
+    case 'edit-run':
+      openRunEditor(el.dataset.id);
+      break;
+
+    case 'close-run-editor':
+      closeRunEditor();
+      break;
+
+    case 'save-run':
+      saveRunEdit(el.dataset.id);
       break;
 
     case 'toggle-match': {
@@ -1333,6 +2488,15 @@ document.addEventListener('submit', (e) => {
   if (!form) return;
   e.preventDefault();
   submitKmFromInput();
+});
+
+// Anzeigename (Rangliste) beim Verlassen des Feldes speichern + in die Cloud
+document.addEventListener('change', (e) => {
+  const el = e.target.closest && e.target.closest('#nickname-input');
+  if (!el) return;
+  state.settings.nickname = el.value.trim().slice(0, 24);
+  persist();
+  cloudPushSettings().then(refreshCommunity);
 });
 
 /* ------------------------------------------------------------------ *
@@ -1477,8 +2641,8 @@ function animateRing() {
     const pct = soll > 0 ? Math.min(1, ran / soll) : 0;
     ring.setAttribute('stroke-dashoffset', (C * (1 - pct)).toFixed(1));
     ring.setAttribute('stroke', soll > 0 && ran >= soll - 1e-9 ? '#34C759' : '#E4B458');
-    if (openEl) openEl.textContent = fmtKm(open);
-    if (istEl) istEl.textContent = fmtKm(ran) + ' km';
+    if (openEl) openEl.textContent = fmtDist(open);
+    if (istEl) istEl.textContent = fmtDistU(ran);
     if (quoteEl) quoteEl.textContent = Math.round(pct * 100) + ' %';
   };
 
@@ -1498,7 +2662,7 @@ function animateRing() {
 /** Feier nach einem Lauf: Haptik + Toast + Konfetti, bei Meilenstein zusätzlich Overlay */
 function celebrate(c) {
   if (navigator.vibrate) navigator.vibrate(c.big ? [0, 35, 30, 35, 60] : 25);
-  floatingToast(`+${fmtKm(c.delta)} km 🔥`);
+  floatingToast(`+${fmtDistU(c.delta)} 🔥`);
   burstConfetti(c.big ? 90 : 36);
 
   if (c.big) {
@@ -1583,13 +2747,321 @@ applyTheme(urlTheme === 'dark' || urlTheme === 'light' ? urlTheme : load(LS.them
 const urlTab = (typeof location !== 'undefined') ? new URLSearchParams(location.search).get('tab') : null;
 if (VALID_TABS.includes(urlTab)) state.tab = urlTab;
 
+/* ------------------------------------------------------------------ *
+ * 13a) AUTH & CLOUD-SYNC  (Supabase – ruhend, bis CONFIG.supabase gefüllt)
+ * ------------------------------------------------------------------ *
+ * Ist CONFIG.supabase leer, bleibt alles lokal (wie bisher). Mit URL+anon-Key:
+ *  - E-Mail/Passwort-Login, Registrierung, Magic-Link, Passwort-Reset
+ *  - Läufe & Einstellungen werden geräteübergreifend in Supabase gespiegelt
+ *  - Offline-first: lokaler State bleibt Quelle, Cloud ist Spiegel/Backup
+ * Sicherheit: nur der öffentliche anon-Key im Client; Row Level Security in der
+ * DB stellt sicher, dass jeder Nutzer ausschließlich seine eigenen Daten sieht.
+ * ------------------------------------------------------------------ */
+let supa = null;                 // Supabase-Client (lazy via ESM-CDN geladen)
+const supaConfigured = () => !!(CONFIG.supabase && CONFIG.supabase.url && CONFIG.supabase.anonKey);
+const loggedIn = () => !!(supa && state.auth.user);
+const userEmail = () => (state.auth.user && (state.auth.user.email || state.auth.user.user_metadata?.email)) || '';
+
+/** Re-render, falls gerade die Einstellungen offen sind (Login-Status sichtbar machen) */
+function renderIfSettings() { if (state.tab === 'settings') render(); }
+
+async function initSupabase() {
+  state.auth.ready = false;
+  if (!supaConfigured()) { state.auth.ready = true; return; }
+  try {
+    const mod = await import('https://esm.sh/@supabase/supabase-js@2');
+    supa = mod.createClient(CONFIG.supabase.url, CONFIG.supabase.anonKey, {
+      auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true },
+    });
+    const { data } = await supa.auth.getSession();
+    state.auth.user = (data && data.session && data.session.user) || null;
+    supa.auth.onAuthStateChange((_evt, session) => {
+      const prev = state.auth.user && state.auth.user.id;
+      state.auth.user = (session && session.user) || null;
+      if (state.auth.user && state.auth.user.id !== prev) cloudSyncOnLogin();
+      else renderIfSettings();
+    });
+    state.auth.ready = true;
+    if (state.auth.user) cloudSyncOnLogin();
+    else renderIfSettings();
+  } catch (e) {
+    console.warn('[Supabase] Init fehlgeschlagen – bleibe lokal:', e.message);
+    supa = null; state.auth.ready = true;
+  }
+}
+
+/* ---- Cloud-Schreiboperationen (No-Op, wenn nicht eingeloggt) ---- */
+async function cloudInsertRun(run) {
+  if (!loggedIn()) return;
+  try {
+    const { data, error } = await supa.from('runs')
+      .insert({ user_id: state.auth.user.id, km: run.km, ran_at: new Date(run.ts).toISOString() })
+      .select('id').single();
+    if (!error && data) { run.rid = data.id; persist(); }
+  } catch (e) { console.warn('[Supabase] insert run:', e.message); }
+}
+async function cloudUpdateRun(run) {
+  if (!loggedIn() || !run.rid) return;
+  try { await supa.from('runs').update({ km: run.km, ran_at: new Date(run.ts).toISOString() }).eq('id', run.rid); }
+  catch (e) { console.warn('[Supabase] update run:', e.message); }
+}
+async function cloudDeleteRun(rid) {
+  if (!loggedIn() || !rid) return;
+  try { await supa.from('runs').delete().eq('id', rid); }
+  catch (e) { console.warn('[Supabase] delete run:', e.message); }
+}
+async function cloudPushSettings() {
+  if (!loggedIn()) return;
+  try {
+    await supa.from('profiles').update({
+      challenge_enabled: state.settings.challengeEnabled,
+      lang: state.settings.lang || 'auto',
+      unit: state.settings.unit,
+      weekly_goal_km: state.settings.weeklyGoalKm,
+      nickname: state.settings.nickname || null,
+      leaderboard_optin: !!state.settings.leaderboardOptin,
+    }).eq('id', state.auth.user.id);
+    await supa.from('settings').upsert({ user_id: state.auth.user.id, data: state.settings, updated_at: new Date().toISOString() });
+  } catch (e) { console.warn('[Supabase] push settings:', e.message); }
+}
+
+/** Erst-Login / Geräte-Wechsel: Remote ↔ Lokal zusammenführen */
+async function cloudSyncOnLogin() {
+  if (!loggedIn()) return;
+  state.auth.syncing = true; renderIfSettings();
+  try {
+    // 1) Remote-Einstellungen übernehmen (falls vorhanden), sonst lokale hochladen
+    const { data: srow } = await supa.from('settings').select('data').eq('user_id', state.auth.user.id).maybeSingle();
+    if (srow && srow.data && typeof srow.data === 'object') {
+      state.settings = { ...DEFAULT_SETTINGS, ...srow.data };
+      save(LS.settings, state.settings);
+      applyNav();
+    }
+    // 2) Läufe zusammenführen (Remote-Quelle + lokale, noch nicht gesyncte)
+    const { data: remote } = await supa.from('runs').select('id,km,ran_at');
+    const remoteRuns = (remote || []).map((r) => ({ id: r.id, rid: r.id, km: Number(r.km), ts: +new Date(r.ran_at) }));
+    const matches = (lr) => remoteRuns.some((rr) => Math.abs(rr.km - lr.km) < 0.05 && Math.abs(rr.ts - lr.ts) < 60000);
+    const localOnly = state.runs.filter((lr) => lr.km > 0 && !lr.rid && !matches(lr));
+    for (const lr of localOnly) {
+      const { data, error } = await supa.from('runs')
+        .insert({ user_id: state.auth.user.id, km: lr.km, ran_at: new Date(lr.ts).toISOString() })
+        .select('id').single();
+      if (!error && data) remoteRuns.push({ id: data.id, rid: data.id, km: lr.km, ts: lr.ts });
+    }
+    state.runs = remoteRuns.sort((a, b) => a.ts - b.ts);
+    reconcileBadges();
+    persist();
+    await cloudPushSettings();
+  } catch (e) { console.warn('[Supabase] Sync fehlgeschlagen:', e.message); }
+  state.auth.syncing = false;
+  render();
+  refreshCommunity();   // Ranking laden
+}
+
+/* ---- Community-Ranking (echte „Top X %" + Wochen-Leaderboard) ---- */
+async function fetchCommunity() {
+  if (!loggedIn()) { state.community = null; return; }
+  try {
+    const { data, error } = await supa.rpc('community_stats');
+    if (!error && data) state.community = data;
+  } catch (e) { console.warn('[Supabase] community_stats:', e.message); }
+}
+async function refreshCommunity() {
+  await fetchCommunity();
+  if (state.tab === 'challenge') render();
+}
+
+/* ---- Auth-UI (Bottom-Sheet) ---- */
+let authMode = 'signin';   // 'signin' | 'signup'
+
+function authMsg(text, kind) {
+  const el = document.getElementById('auth-msg');
+  if (!el) return;
+  el.textContent = text || '';
+  el.className = `text-[12px] font-medium min-h-[16px] mt-1 ${kind === 'err' ? 'text-wm-red' : 'text-wm-emerald'}`;
+}
+const authVal = (id) => { const el = document.getElementById(id); return el ? el.value.trim() : ''; };
+const authRedirect = () => (typeof location !== 'undefined' ? location.origin + location.pathname : undefined);
+
+function openAuthSheet() {
+  if (!supa) return;
+  authMode = 'signin';
+  const sheet = document.createElement('div');
+  sheet.id = 'auth-sheet';
+  sheet.innerHTML = renderAuthSheet();
+  document.body.appendChild(sheet);
+  makeSheetDraggable(sheet, closeAuthSheet);
+  if (navigator.vibrate) navigator.vibrate(6);
+}
+function closeAuthSheet() {
+  const s = document.getElementById('auth-sheet');
+  if (!s) return;
+  s.querySelector('.sheet-backdrop')?.classList.add('closing');
+  s.querySelector('.sheet')?.classList.add('closing');
+  setTimeout(() => s.remove(), 260);
+}
+function renderAuthSheet() {
+  return `
+    <div class="sheet-backdrop" data-action="close-auth"></div>
+    <div class="sheet max-w-md mx-auto bg-ink-50 dark:bg-ink-950 rounded-t-[28px] px-5 pb-8 pt-1">
+      <div class="grabber" data-drag-handle></div>
+      <div class="w-12 h-12 mx-auto mt-2 mb-3 rounded-2xl grid place-items-center text-2xl shadow-glow" style="background:linear-gradient(135deg,#10B981,#059669)">☁️</div>
+      <h3 class="text-[18px] font-bold text-center">${t('auth.welcome')}</h3>
+      <p class="text-[12px] text-center text-ink-900/50 dark:text-ink-50/50 mb-4 px-4">${t('auth.cloudHint')}</p>
+      ${segTabs('auth-mode', authMode, [['signin', t('auth.signin')], ['signup', t('auth.signup')]])}
+      <input id="auth-email" type="email" inputmode="email" autocomplete="email" placeholder="${t('auth.email')}"
+             class="w-full mb-3 px-4 py-3 rounded-xl bg-black/[0.04] dark:bg-white/[0.06] text-[15px] outline-none focus:ring-2 ring-wm-emerald/40"/>
+      <input id="auth-pass" type="password" autocomplete="current-password" placeholder="${t('auth.password')}"
+             class="w-full px-4 py-3 rounded-xl bg-black/[0.04] dark:bg-white/[0.06] text-[15px] outline-none focus:ring-2 ring-wm-emerald/40"/>
+      <p id="auth-msg" class="text-[12px] font-medium min-h-[16px] mt-1"></p>
+      <button data-action="auth-submit" class="press w-full mt-3 py-3 rounded-xl text-white font-semibold shadow-glow"
+              style="background:linear-gradient(135deg,#10B981,#059669)">${t(authMode === 'signup' ? 'auth.signup' : 'auth.signin')}</button>
+      <div class="flex items-center justify-between mt-4 text-[13px] font-semibold">
+        <button data-action="auth-forgot" class="text-ink-900/55 dark:text-ink-50/55 press">${t('auth.forgot')}</button>
+        <button data-action="auth-magic" class="text-wm-emerald press">${t('auth.magic')}</button>
+      </div>
+    </div>`;
+}
+/** Aktiven Auth-Tab + Submit-Beschriftung aktualisieren, ohne neu zu mounten */
+function refreshAuthSheet() {
+  const host = document.getElementById('auth-sheet');
+  if (!host) return;
+  host.querySelectorAll('[data-action="auth-mode"]').forEach((b) => b.classList.toggle('seg-active', b.dataset.val === authMode));
+  const submit = host.querySelector('[data-action="auth-submit"]');
+  if (submit) submit.textContent = t(authMode === 'signup' ? 'auth.signup' : 'auth.signin');
+}
+
+async function authSubmit() {
+  if (!supa) return;
+  const email = authVal('auth-email'), pass = authVal('auth-pass');
+  if (!email || !pass) { authMsg(t('auth.needFields'), 'err'); return; }
+  authMsg(t('auth.busy'));
+  try {
+    if (authMode === 'signup') {
+      const { data, error } = await supa.auth.signUp({ email, password: pass, options: { emailRedirectTo: authRedirect() } });
+      if (error) return authMsg(error.message, 'err');
+      if (!data.session) return authMsg(t('auth.checkEmail'));   // E-Mail-Bestätigung nötig
+    } else {
+      const { error } = await supa.auth.signInWithPassword({ email, password: pass });
+      if (error) return authMsg(error.message, 'err');
+    }
+    closeAuthSheet();   // onAuthStateChange → Sync + Re-Render
+  } catch (e) { authMsg(e.message, 'err'); }
+}
+async function authMagic() {
+  if (!supa) return;
+  const email = authVal('auth-email');
+  if (!email) { authMsg(t('auth.needEmail'), 'err'); return; }
+  authMsg(t('auth.busy'));
+  try {
+    const { error } = await supa.auth.signInWithOtp({ email, options: { emailRedirectTo: authRedirect() } });
+    authMsg(error ? error.message : t('auth.magicSent'), error ? 'err' : 'ok');
+  } catch (e) { authMsg(e.message, 'err'); }
+}
+async function authForgot() {
+  if (!supa) return;
+  const email = authVal('auth-email');
+  if (!email) { authMsg(t('auth.needEmail'), 'err'); return; }
+  authMsg(t('auth.busy'));
+  try {
+    const { error } = await supa.auth.resetPasswordForEmail(email, { redirectTo: authRedirect() });
+    authMsg(error ? error.message : t('auth.resetSent'), error ? 'err' : 'ok');
+  } catch (e) { authMsg(e.message, 'err'); }
+}
+async function authLogout() {
+  if (!supa) return;
+  try { await supa.auth.signOut(); } catch (e) {}
+  state.auth.user = null;
+  state.community = null;
+  render();   // lokale Läufe bleiben als Cache erhalten
+}
+
+/* ------------------------------------------------------------------ *
+ * 13) ONBOARDING / WELCOME  (einmalig beim ersten Start)
+ * ------------------------------------------------------------------ */
+function showOnboarding() {
+  if (document.getElementById('onboarding')) return;
+  const en = getLang() === 'en';
+  const feat = (icon, tk, dk) => `
+    <div class="flex items-start gap-3">
+      <div class="w-10 h-10 rounded-xl grid place-items-center text-xl shrink-0 glass-chip">${icon}</div>
+      <div class="min-w-0">
+        <p class="text-[15px] font-bold leading-tight">${t(tk)}</p>
+        <p class="text-[13px] text-white/70 leading-snug">${t(dk)}</p>
+      </div>
+    </div>`;
+
+  const el = document.createElement('div');
+  el.id = 'onboarding';
+  el.className = 'fixed inset-0 z-[90] overflow-y-auto pitch-grad text-white';
+  el.innerHTML = `
+    <div class="hero-spot relative max-w-md mx-auto min-h-full px-6 pt-16 pb-10 flex flex-col"
+         style="padding-top:max(env(safe-area-inset-top),3rem)">
+      <div class="text-center mb-8">
+        <div class="text-6xl mb-3">⚽️</div>
+        <div class="text-2xl mb-1">🇲🇽 🇺🇸 🇨🇦</div>
+        <h1 class="text-[30px] font-extrabold leading-tight mt-3">WM 2026</h1>
+        <p class="text-[16px] font-semibold text-wm-lime mt-1">${t('onb.tagline')}</p>
+        <p class="text-[13px] text-white/70 mt-3 max-w-xs mx-auto">${t('onb.rule')}</p>
+      </div>
+
+      <div class="space-y-4 mb-8">
+        ${feat('📡', 'onb.f1.t', 'onb.f1.d')}
+        ${feat('🏃', 'onb.f2.t', 'onb.f2.d')}
+        ${feat('🏅', 'onb.f3.t', 'onb.f3.d')}
+      </div>
+
+      <div class="mt-auto">
+        <p class="text-center text-[14px] font-semibold text-white/85 mb-3">${t('onb.q')}</p>
+        <button data-action="onb-choose" data-mode="challenge"
+                class="press w-full mb-3 p-4 rounded-2xl text-left glass-chip border border-white/25 active:scale-[.98] transition">
+          <div class="flex items-center gap-3">
+            <span class="text-2xl">🏃‍♂️</span>
+            <div class="flex-1 min-w-0">
+              <p class="text-[15px] font-bold">${t('onb.challenge.t')}</p>
+              <p class="text-[12px] text-white/70">${t('onb.challenge.d')}</p>
+            </div>
+            <svg class="w-5 h-5 text-white/60" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg>
+          </div>
+        </button>
+        <button data-action="onb-choose" data-mode="info"
+                class="press w-full p-4 rounded-2xl text-left bg-white/5 border border-white/10 active:scale-[.98] transition">
+          <div class="flex items-center gap-3">
+            <span class="text-2xl">📰</span>
+            <div class="flex-1 min-w-0">
+              <p class="text-[15px] font-bold">${t('onb.info.t')}</p>
+              <p class="text-[12px] text-white/70">${t('onb.info.d')}</p>
+            </div>
+            <svg class="w-5 h-5 text-white/60" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg>
+          </div>
+        </button>
+        <p class="text-center text-[11px] text-white/45 mt-4">${t('onb.hint')}</p>
+      </div>
+    </div>`;
+  document.body.appendChild(el);
+}
+
+function finishOnboarding(mode) {
+  state.settings.challengeEnabled = (mode === 'challenge');
+  state.onboarded = true;
+  if (!state.settings.challengeEnabled && state.tab === 'challenge') state.tab = 'today';
+  persist();
+  document.getElementById('onboarding')?.remove();
+  applyNav();
+  render();
+  if (navigator.vibrate) navigator.vibrate(12);
+}
+
 (async function init() {
+  applyNav();                       // Sprache/Tabs sofort setzen
+  if (!state.onboarded) showOnboarding();
   render();                         // Lade-Spinner
   state.data = await fetchMatches();
   state.loading = false;
   render();
 
   scheduleNextPoll();               // Live-Updates starten (nur falls Worker konfiguriert)
+  initSupabase();                   // Login/Cloud-Sync (nur falls CONFIG.supabase gefüllt)
 
   // iOS bietet kein beforeinstallprompt → eigener Hinweis (nur Safari, nicht installiert)
   if (isIOS() && !isStandalone()) showInstallBanner('ios');

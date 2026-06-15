@@ -118,6 +118,7 @@ async function fetchLiveOverlay(env) {
     map.set(pairKey(f.teams?.home?.name, f.teams?.away?.name), {
       status: AF_STATUS[f.fixture?.status?.short] ?? 'IN_PLAY',
       minute: f.fixture?.status?.elapsed ?? null,
+      fixtureId: f.fixture?.id ?? null,
       score: { home: f.goals?.home ?? null, away: f.goals?.away ?? null },
     });
   }
@@ -142,6 +143,73 @@ async function fetchScorers(env) {
   }));
 }
 
+/* =====================================================================
+ * QUELLE 4 — API-Football  (Spiel-Detail: Aufstellung, Statistik, Events)
+ * ===================================================================== */
+const AF_BASE = 'https://v3.football.api-sports.io';
+const photoUrl = (id) => id ? `https://media.api-sports.io/football/players/${id}.png` : null;
+
+async function afGet(env, path) {
+  const res = await fetch(`${AF_BASE}${path}`, {
+    headers: { 'x-apisports-key': env.API_FOOTBALL_KEY }, cf: { cacheTtl: 60 },
+  });
+  if (!res.ok) throw new Error(`api-football ${res.status}`);
+  return (await res.json()).response || [];
+}
+
+/** API-Football-Aufstellung → App-Schema (Zeilen aus grid „row:col") */
+function mapLineup(l) {
+  const grid = (g) => { const [r, c] = (g || '1:1').split(':').map(Number); return { r: r || 1, c: c || 1 }; };
+  const players = (l.startXI || []).map((x) => ({ ...x.player, _g: grid(x.player.grid) }));
+  const rows = {};
+  for (const p of players) (rows[p._g.r] ??= []).push(p);
+  const rowKeys = Object.keys(rows).map(Number).sort((a, b) => a - b);
+  const lines = rowKeys.map((rk) => rows[rk].length);
+  const startXI = [];
+  rowKeys.forEach((rk, li) => {
+    rows[rk].sort((a, b) => a._g.c - b._g.c).forEach((p, j) => {
+      startXI.push({ num: p.number, name: p.name, pos: p.pos, li, j, count: rows[rk].length, photo: photoUrl(p.id) });
+    });
+  });
+  const subs = (l.substitutes || []).map((x) => ({ num: x.player.number, name: x.player.name, pos: x.player.pos, photo: photoUrl(x.player.id) }));
+  return { formation: l.formation || '', coach: (l.coach && l.coach.name) || '', startXI, subs, lines, teamId: l.team && l.team.id };
+}
+
+function mapStats(arr, homeId) {
+  const pick = (s, type) => { const f = (s.statistics || []).find((x) => x.type === type); let v = f ? f.value : 0; if (typeof v === 'string') v = parseInt(v) || 0; return v || 0; };
+  const one = (s) => ({
+    possession: pick(s, 'Ball Possession'), shots: pick(s, 'Total Shots'), shotsOn: pick(s, 'Shots on Goal'),
+    passes: pick(s, 'Total passes'), passAcc: pick(s, 'Passes %'), corners: pick(s, 'Corner Kicks'),
+    fouls: pick(s, 'Fouls'), yellow: pick(s, 'Yellow Cards'), offsides: pick(s, 'Offsides'), saves: pick(s, 'Goalkeeper Saves'),
+  });
+  const home = arr.find((s) => s.team && s.team.id === homeId) || arr[0];
+  const away = arr.find((s) => s.team && s.team.id !== homeId) || arr[1];
+  return (home && away) ? { home: one(home), away: one(away) } : null;
+}
+
+function mapEvents(arr, homeId) {
+  return (arr || []).map((e) => {
+    let type;
+    if (e.type === 'Goal') type = e.detail === 'Penalty' ? 'penalty' : (e.detail === 'Own Goal' ? 'owngoal' : 'goal');
+    else if (e.type === 'Card') type = e.detail === 'Red Card' ? 'red' : 'yellow';
+    else if (e.type === 'subst') type = 'subst';
+    else return null;
+    return { minute: (e.time && e.time.elapsed) || 0, type, side: (e.team && e.team.id === homeId) ? 'home' : 'away', player: (e.player && e.player.name) || '' };
+  }).filter(Boolean).sort((a, b) => a.minute - b.minute);
+}
+
+async function fetchMatchDetail(env, fixtureId) {
+  const [lineups, stats, events] = await Promise.all([
+    afGet(env, `/fixtures/lineups?fixture=${fixtureId}`).catch(() => []),
+    afGet(env, `/fixtures/statistics?fixture=${fixtureId}`).catch(() => []),
+    afGet(env, `/fixtures/events?fixture=${fixtureId}`).catch(() => []),
+  ]);
+  if (!lineups.length) return { lineups: null };   // App nutzt dann ihren eigenen Fallback
+  const home = mapLineup(lineups[0]);
+  const away = mapLineup(lineups[1] || lineups[0]);
+  return { lineups: { home, away }, stats: mapStats(stats, home.teamId), events: mapEvents(events, home.teamId), predicted: false };
+}
+
 /* ---- Basis + Live verschmelzen (Live „veredelt" laufende Spiele) ---- */
 function merge(base, liveMap) {
   if (liveMap && liveMap.size) {
@@ -150,6 +218,7 @@ function merge(base, liveMap) {
       if (live) {
         m.status = live.status;
         m.minute = live.minute;
+        if (live.fixtureId) m.fixtureId = live.fixtureId;   // für /api/match (Detail)
         if (live.score.home !== null) m.score = live.score;
       }
     }
@@ -195,8 +264,28 @@ export default {
 
     const url = new URL(request.url);
     if (url.pathname === '/' ) {
-      return json({ ok: true, service: 'WM 2026 Lauf-Challenge Proxy', endpoint: '/api/matches' }, 60);
+      return json({ ok: true, service: 'WM 2026 Lauf-Challenge Proxy', endpoints: ['/api/matches', '/api/match?fixture=ID'] }, 60);
     }
+
+    // Spiel-Detail (Aufstellung, Statistik, Events) — Edge-gecacht
+    if (url.pathname === '/api/match') {
+      const fixture = url.searchParams.get('fixture');
+      if (!fixture) return new Response('missing fixture', { status: 400, headers: CORS });
+      if (env.DEMO_MODE === 'true' || !env.API_FOOTBALL_KEY) return json({ lineups: null, demo: true }, 60);
+
+      const cache = caches.default;
+      const cacheKey = new Request(url.toString());
+      const cached = await cache.match(cacheKey);
+      if (cached) return cached;
+
+      let payload, ttl = 120;
+      try { payload = await fetchMatchDetail(env, fixture); }
+      catch (e) { console.error('Detail-Fehler:', e.message); payload = { lineups: null, error: e.message }; ttl = 30; }
+      const res = json(payload, ttl);
+      ctx.waitUntil(cache.put(cacheKey, res.clone()));
+      return res;
+    }
+
     if (url.pathname !== '/api/matches') {
       return new Response('Not found', { status: 404, headers: CORS });
     }
