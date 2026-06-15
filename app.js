@@ -426,7 +426,7 @@ function viewSchedule() {
     return `
       <section>
         <h3 class="text-[13px] font-bold tracking-wide text-ink-900/45 dark:text-ink-50/45 mb-2 px-1">GRUPPE ${g}</h3>
-        <div class="rounded-xl2 bg-white dark:bg-ink-900 shadow-card dark:shadow-card-dark overflow-hidden">${rows}</div>
+        <div class="rounded-xl2 glass-card overflow-hidden">${rows}</div>
       </section>`;
   }).join('');
   return `<div class="stagger space-y-6">${groupsHtml}</div>`;
@@ -457,7 +457,7 @@ function viewToday() {
       <div class="flex gap-3 overflow-x-auto -mx-5 px-5 pb-1">
         ${others.map((m) => {
           const h = team(m.home), a = team(m.away);
-          return `<button data-action="open-match" data-id="${m.id}" class="press shrink-0 w-[150px] rounded-xl2 bg-white dark:bg-ink-900 shadow-card dark:shadow-card-dark p-3 text-left">
+          return `<button data-action="open-match" data-id="${m.id}" class="press shrink-0 w-[150px] rounded-xl2 glass-card p-3 text-left">
             <div class="flex items-center justify-between mb-2">
               <span class="inline-flex items-center gap-1 text-[10px] font-bold text-wm-red"><span class="w-1.5 h-1.5 rounded-full bg-wm-red live-dot"></span>${liveMinute(m)}</span>
               <span class="text-[10px] text-ink-900/40 dark:text-ink-50/40">Gr. ${m.group}</span>
@@ -477,7 +477,7 @@ function viewToday() {
   const todayList = todays.length ? `
     <section>
       <h3 class="text-[13px] font-bold tracking-wide text-ink-900/45 dark:text-ink-50/45 mb-2 px-1">HEUTE · ${todays.length} ${todays.length === 1 ? 'SPIEL' : 'SPIELE'}</h3>
-      <div class="rounded-xl2 bg-white dark:bg-ink-900 shadow-card dark:shadow-card-dark overflow-hidden">
+      <div class="rounded-xl2 glass-card overflow-hidden">
         ${todays.map(matchRow).join('<div class="h-px bg-black/5 dark:bg-white/10 mx-4"></div>')}
       </div>
     </section>` : '';
@@ -496,17 +496,18 @@ function countdownCard(next) {
   if (!next) return '';
   return `
     <section>
-      <div class="rounded-xl2 pitch-grad text-white shadow-card p-5 relative overflow-hidden">
+      <div class="hero-spot rounded-xl3 pitch-grad text-white shadow-card p-6 relative overflow-hidden">
         <div class="absolute inset-0 opacity-[0.06]" style="background-image:radial-gradient(circle at 1px 1px,#fff 1px,transparent 0);background-size:22px 22px"></div>
+        ${pitchLines()}
         <div class="relative">
           <p class="text-[11px] font-bold tracking-widest uppercase text-wm-lime mb-3">Nächstes Spiel · in</p>
-          <div id="countdown" data-target="${+new Date(next.utcDate)}" class="cd-num text-[34px] leading-none mb-3">––:––:––</div>
+          <div id="countdown" data-target="${+new Date(next.utcDate)}" class="cd-num text-[38px] leading-none mb-4">––:––:––</div>
           <div class="flex items-center justify-center gap-3">
-            <div class="flex items-center gap-2 flex-1 justify-end min-w-0"><span class="text-[14px] font-semibold truncate">${team(next.home).name}</span>${crest(team(next.home), 'crest-md', true)}</div>
+            <div class="flex items-center gap-2.5 flex-1 justify-end min-w-0"><span class="text-[14px] font-semibold truncate">${team(next.home).name}</span><div class="w-12 h-12 rounded-full grid place-items-center glass-chip">${crest(team(next.home), 'crest-md')}</div></div>
             <span class="text-[13px] font-bold text-white/50">vs</span>
-            <div class="flex items-center gap-2 flex-1 min-w-0">${crest(team(next.away), 'crest-md', true)}<span class="text-[14px] font-semibold truncate">${team(next.away).name}</span></div>
+            <div class="flex items-center gap-2.5 flex-1 min-w-0"><div class="w-12 h-12 rounded-full grid place-items-center glass-chip">${crest(team(next.away), 'crest-md')}</div><span class="text-[14px] font-semibold truncate">${team(next.away).name}</span></div>
           </div>
-          <p class="text-center text-[11px] text-white/55 mt-3">${fmtKickoff(next.utcDate)} Uhr · Gruppe ${next.group}</p>
+          <p class="text-center text-[11px] text-white/55 mt-4">${fmtKickoff(next.utcDate)} Uhr · Gruppe ${next.group}</p>
         </div>
       </div>
     </section>`;
@@ -519,7 +520,7 @@ function challengeSnapshot() {
   const done = soll > 0 && ist >= soll;
   return `
     <section>
-      <button data-action="switch-tab" data-tab="challenge" class="press w-full text-left rounded-xl2 bg-white dark:bg-ink-900 shadow-card dark:shadow-card-dark p-5">
+      <button data-action="switch-tab" data-tab="challenge" class="press w-full text-left rounded-xl2 glass-card p-5">
         <div class="flex items-center justify-between mb-3">
           <h3 class="text-[15px] font-bold">Deine Challenge</h3>
           <span class="text-[12px] font-semibold text-wm-emerald">Öffnen →</span>
@@ -532,7 +533,7 @@ function challengeSnapshot() {
           <div class="flex-1 pb-1">
             <div class="flex justify-between text-[11px] text-ink-900/45 dark:text-ink-50/45 mb-1"><span>${fmtKm(ist)} km</span><span>${fmtKm(soll)} km</span></div>
             <div class="h-2 rounded-full bg-black/[0.06] dark:bg-white/[0.08] overflow-hidden">
-              <div class="h-full rounded-full" style="width:${(pct * 100).toFixed(1)}%;background:linear-gradient(90deg,#10B981,#34C759)"></div>
+              <div class="bar-fill h-full rounded-full" style="width:${(pct * 100).toFixed(1)}%;background:linear-gradient(90deg,#10B981,#34C759)"></div>
             </div>
           </div>
         </div>
@@ -564,35 +565,45 @@ function heroCard(m) {
   const label = live ? 'LIVE JETZT' : (played ? 'ZULETZT' : 'NÄCHSTES SPIEL');
   const topRight = live
     ? `<span class="inline-flex items-center gap-1.5 text-[11px] font-bold px-2.5 py-1 rounded-full bg-wm-red text-white"><span class="w-1.5 h-1.5 rounded-full bg-white live-dot"></span>${liveMinute(m)}</span>`
-    : `<span class="text-[11px] font-medium text-white/70">${played ? 'Endstand' : fmtKickoff(m.utcDate)}</span>`;
+    : `<span class="glass-chip text-[11px] font-semibold text-white/85 px-2.5 py-1 rounded-full">${played ? 'Endstand' : fmtKickoff(m.utcDate)}</span>`;
   const center = played
-    ? `<div class="score text-[40px] leading-none">${m.score.home}<span class="opacity-40 mx-2">:</span>${m.score.away}</div>`
-    : `<div class="text-2xl font-extrabold text-white/85">VS</div>`;
+    ? `<div class="score text-[46px] leading-none">${m.score.home}<span class="opacity-40 mx-2">:</span>${m.score.away}</div>`
+    : `<div class="text-3xl font-extrabold text-white/85">VS</div>`;
+  const crestGlass = (t) => `<div class="w-16 h-16 rounded-full grid place-items-center glass-chip">${crest(t, 'crest-lg')}</div>`;
 
   return `
-    <button data-action="open-match" data-id="${m.id}" class="press block w-full text-left pitch-grad rounded-xl2 p-5 text-white shadow-card relative overflow-hidden">
+    <button data-action="open-match" data-id="${m.id}" class="press hero-spot block w-full text-left pitch-grad rounded-xl3 p-6 text-white shadow-card relative overflow-hidden">
       <div class="absolute inset-0 opacity-[0.06]" style="background-image:radial-gradient(circle at 1px 1px,#fff 1px,transparent 0);background-size:22px 22px"></div>
+      ${pitchLines()}
       <div class="relative">
-        <div class="flex items-center justify-between mb-4">
+        <div class="flex items-center justify-between mb-5">
           <span class="text-[11px] font-bold tracking-widest uppercase text-wm-lime">${label}</span>
           ${topRight}
         </div>
         <div class="flex items-center justify-between gap-3">
-          <div class="flex-1 flex flex-col items-center gap-2 text-center min-w-0">
-            ${crest(h, 'crest-lg', true)}
+          <div class="flex-1 flex flex-col items-center gap-2.5 text-center min-w-0">
+            ${crestGlass(h)}
             <span class="text-[13px] font-semibold truncate w-full">${h.name}</span>
           </div>
           <div class="shrink-0 text-center px-1">${center}</div>
-          <div class="flex-1 flex flex-col items-center gap-2 text-center min-w-0">
-            ${crest(a, 'crest-lg', true)}
+          <div class="flex-1 flex flex-col items-center gap-2.5 text-center min-w-0">
+            ${crestGlass(a)}
             <span class="text-[13px] font-semibold truncate w-full">${a.name}</span>
           </div>
         </div>
-        <div class="mt-4 flex items-center justify-center gap-2 text-[11px] text-white/55">
+        <div class="mt-5 flex items-center justify-center gap-2 text-[11px] text-white/55">
           <span>Gruppe ${m.group}</span><span>·</span><span>Tippen für Details</span>
         </div>
       </div>
     </button>`;
+}
+
+/** Dezente, generierte Stadion-/Spielfeld-Linien (SVG) als Hero-Untergrund */
+function pitchLines() {
+  return `<svg class="absolute bottom-0 inset-x-0 w-full opacity-[0.10]" height="90" viewBox="0 0 400 90" preserveAspectRatio="none" fill="none" stroke="#fff" stroke-width="1.5">
+    <path d="M200 -40 a60 60 0 0 1 0 120" /><line x1="200" y1="0" x2="200" y2="90"/>
+    <rect x="140" y="74" width="120" height="60" rx="2"/><rect x="172" y="84" width="56" height="40" rx="2"/>
+  </svg>`;
 }
 
 /** Alle Gruppentabellen (live aus Ergebnissen berechnet) */
@@ -619,7 +630,7 @@ function viewStandings() {
     return `
       <section class="fade-up">
         <h3 class="text-[13px] font-bold tracking-wide text-ink-900/50 dark:text-ink-50/50 mb-2 px-1">GRUPPE ${g}</h3>
-        <div class="rounded-xl2 bg-white dark:bg-ink-900 shadow-card dark:shadow-card-dark overflow-hidden">
+        <div class="rounded-xl2 glass-card overflow-hidden">
           <table class="w-full border-collapse">
             <thead>
               <tr class="text-[10px] font-semibold uppercase tracking-wide text-ink-900/35 dark:text-ink-50/35">
@@ -655,7 +666,7 @@ function sectionScorers() {
     </div>`).join('<div class="h-px bg-black/5 dark:bg-white/10 mx-4"></div>');
 
   return `
-    <div class="rounded-xl2 bg-white dark:bg-ink-900 shadow-card dark:shadow-card-dark overflow-hidden">
+    <div class="rounded-xl2 glass-card overflow-hidden">
       <div class="px-4 pt-4 pb-2"><h3 class="text-[15px] font-bold">⚽️ Torschützenkönige</h3></div>
       ${rows}
     </div>`;
@@ -676,7 +687,7 @@ function sectionBracket() {
 
   if (!ko.length) {
     return `
-      <div class="rounded-xl2 bg-white dark:bg-ink-900 shadow-card dark:shadow-card-dark p-6 text-center">
+      <div class="rounded-xl2 glass-card p-6 text-center">
         <div class="w-12 h-12 mx-auto mb-3 rounded-full grid place-items-center text-2xl" style="background:linear-gradient(135deg,#10B981,#059669)">🏆</div>
         <h3 class="text-[15px] font-bold mb-1">K.o.-Baum</h3>
         <p class="text-[13px] text-ink-900/50 dark:text-ink-50/50 leading-relaxed">
@@ -692,7 +703,7 @@ function sectionBracket() {
     return `
       <section>
         <h3 class="text-[13px] font-bold tracking-wide text-ink-900/45 dark:text-ink-50/45 mb-2 px-1">${label.toUpperCase()}</h3>
-        <div class="rounded-xl2 bg-white dark:bg-ink-900 shadow-card dark:shadow-card-dark overflow-hidden">
+        <div class="rounded-xl2 glass-card overflow-hidden">
           ${ms.map(matchRow).join('<div class="h-px bg-black/5 dark:bg-white/10 mx-4"></div>')}
         </div>
       </section>`;
@@ -748,9 +759,9 @@ function viewChallenge() {
         </div>`;
     }).join('<div class="h-px bg-black/5 dark:bg-white/10 mx-4"></div>');
 
-  return `
+  return `<div class="stagger">
     <!-- Fortschrittsring -->
-    <div class="fade-up rounded-xl2 bg-white dark:bg-ink-900 shadow-card dark:shadow-card-dark p-6 mb-5">
+    <div class="rounded-xl2 glass-card p-6 mb-5">
       <div class="flex items-center justify-between mb-1">
         <h3 class="text-[15px] font-bold">Deine Bilanz</h3>
         ${streak > 0
@@ -783,7 +794,7 @@ function viewChallenge() {
     ${sectionJourney(ist)}
 
     <!-- Kilometer-Tracker -->
-    <div class="fade-up rounded-xl2 bg-white dark:bg-ink-900 shadow-card dark:shadow-card-dark p-5 mb-5">
+    <div class="fade-up rounded-xl2 glass-card p-5 mb-5">
       <h3 class="text-[15px] font-bold mb-1">Kilometer eintragen</h3>
       <p class="text-[12px] text-ink-900/45 dark:text-ink-50/45 mb-4">Trag deine gerade gelaufene Strecke ein.</p>
 
@@ -820,7 +831,7 @@ function viewChallenge() {
     ${sectionHistory()}
 
     <!-- Spiel-Filter -->
-    <div class="fade-up rounded-xl2 bg-white dark:bg-ink-900 shadow-card dark:shadow-card-dark overflow-hidden mb-5">
+    <div class="fade-up rounded-xl2 glass-card overflow-hidden mb-5">
       <div class="px-4 pt-4 pb-2">
         <h3 class="text-[15px] font-bold">Spiele werten</h3>
         <p class="text-[12px] text-ink-900/45 dark:text-ink-50/45">Schalter aus = Tore dieses Spiels werden vom Soll abgezogen.</p>
@@ -833,7 +844,8 @@ function viewChallenge() {
     <button data-action="reset"
             class="w-full py-3 rounded-xl text-wm-red font-medium text-[14px] active:opacity-60 transition mb-2">
       Fortschritt zurücksetzen
-    </button>`;
+    </button>
+  </div>`;
 }
 
 const stat = (label, value, color, id = '') => `
@@ -868,7 +880,7 @@ function sectionJourney(ist) {
   }).join('');
 
   return `
-    <div class="fade-up rounded-xl2 bg-white dark:bg-ink-900 shadow-card dark:shadow-card-dark p-5 mb-5">
+    <div class="fade-up rounded-xl2 glass-card p-5 mb-5">
       <div class="flex items-center justify-between mb-1">
         <h3 class="text-[15px] font-bold">Virtuelle WM-Reise</h3>
         <span class="text-[12px] text-ink-900/45 dark:text-ink-50/45">🇲🇽 🇺🇸 🇨🇦</span>
@@ -880,7 +892,7 @@ function sectionJourney(ist) {
       </p>
 
       <div class="relative h-2.5 rounded-full bg-black/[0.06] dark:bg-white/[0.08] overflow-hidden">
-        <div class="absolute inset-y-0 left-0 rounded-full" style="width:${(pct * 100).toFixed(1)}%;background:linear-gradient(90deg,#E4B458,#34C759)"></div>
+        <div class="bar-fill absolute inset-y-0 left-0 rounded-full" style="width:${(pct * 100).toFixed(1)}%;background:linear-gradient(90deg,#E4B458,#34C759)"></div>
       </div>
       <div class="relative mt-1" style="height:18px">
         <span class="absolute -translate-x-1/2 text-base leading-none" style="left:${(pct * 100).toFixed(1)}%">🏃</span>
@@ -899,32 +911,57 @@ function sectionChart() {
   const data = chartData();
   if (!data || data.days.length < 2) {
     return `
-    <div class="fade-up rounded-xl2 bg-white dark:bg-ink-900 shadow-card dark:shadow-card-dark p-5 mb-5">
+    <div class="fade-up rounded-xl2 glass-card p-5 mb-5">
       <h3 class="text-[15px] font-bold mb-1">Verlauf</h3>
       <p class="text-[13px] text-ink-900/45 dark:text-ink-50/45">Sobald ein paar Tage Daten da sind, siehst du hier Soll vs. Gelaufen.</p>
     </div>`;
   }
 
-  const W = 320, H = 130, P = 8;
+  const W = 320, H = 140, P = 10;
   const n = data.days.length;
   const x = (i) => P + (i / (n - 1)) * (W - 2 * P);
   const y = (v) => H - P - (v / data.maxY) * (H - 2 * P);
-  const line = (key) => data.days.map((p, i) => `${x(i).toFixed(1)},${y(p[key]).toFixed(1)}`).join(' ');
-  const istArea = `${P},${H - P} ${line('ist')} ${(W - P)},${H - P}`;
+  const pts = (key) => data.days.map((p, i) => [x(i), y(p[key])]);
+
+  // Catmull-Rom → kubische Bézier (weiche Kurve)
+  const smooth = (P2) => {
+    if (P2.length < 2) return '';
+    let d = `M ${P2[0][0].toFixed(1)},${P2[0][1].toFixed(1)}`;
+    for (let i = 0; i < P2.length - 1; i++) {
+      const p0 = P2[i - 1] || P2[i], p1 = P2[i], p2 = P2[i + 1], p3 = P2[i + 2] || p2;
+      const c1x = p1[0] + (p2[0] - p0[0]) / 6, c1y = p1[1] + (p2[1] - p0[1]) / 6;
+      const c2x = p2[0] - (p3[0] - p1[0]) / 6, c2y = p2[1] - (p3[1] - p1[1]) / 6;
+      d += ` C ${c1x.toFixed(1)},${c1y.toFixed(1)} ${c2x.toFixed(1)},${c2y.toFixed(1)} ${p2[0].toFixed(1)},${p2[1].toFixed(1)}`;
+    }
+    return d;
+  };
+
+  const istPts = pts('ist'), sollPts = pts('soll');
+  const istPath = smooth(istPts), sollPath = smooth(sollPts);
+  const area = `${istPath} L ${x(n - 1).toFixed(1)},${H - P} L ${x(0).toFixed(1)},${H - P} Z`;
+  const last = istPts[n - 1];
 
   return `
-    <div class="fade-up rounded-xl2 bg-white dark:bg-ink-900 shadow-card dark:shadow-card-dark p-5 mb-5">
+    <div class="fade-up rounded-xl2 glass-card p-5 mb-5">
       <div class="flex items-center justify-between mb-3">
         <h3 class="text-[15px] font-bold">Verlauf</h3>
         <div class="flex items-center gap-3 text-[11px]">
           <span class="inline-flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-full bg-wm-gold"></span>Soll</span>
-          <span class="inline-flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-full bg-wm-green"></span>Gelaufen</span>
+          <span class="inline-flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-full bg-wm-emerald"></span>Gelaufen</span>
         </div>
       </div>
-      <svg viewBox="0 0 ${W} ${H}" class="w-full" preserveAspectRatio="none" style="height:130px">
-        <polygon points="${istArea}" fill="#34C759" opacity="0.12"/>
-        <polyline points="${line('soll')}" fill="none" stroke="#E4B458" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
-        <polyline points="${line('ist')}"  fill="none" stroke="#34C759" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+      <svg viewBox="0 0 ${W} ${H}" class="w-full" style="height:140px">
+        <defs>
+          <linearGradient id="istFill" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stop-color="#10B981" stop-opacity="0.28"/>
+            <stop offset="1" stop-color="#10B981" stop-opacity="0"/>
+          </linearGradient>
+        </defs>
+        <line x1="${P}" y1="${H - P}" x2="${W - P}" y2="${H - P}" stroke="currentColor" stroke-opacity="0.12"/>
+        <path class="chart-area" d="${area}" fill="url(#istFill)"/>
+        <path class="chart-line" pathLength="1" d="${sollPath}" fill="none" stroke="#E4B458" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+        <path class="chart-line" pathLength="1" d="${istPath}" fill="none" stroke="#10B981" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"/>
+        <circle class="chart-dot" cx="${last[0].toFixed(1)}" cy="${last[1].toFixed(1)}" r="4.5" fill="#10B981" stroke="#fff" stroke-width="2"/>
       </svg>
       <div class="flex items-center justify-between mt-1 text-[10px] text-ink-900/40 dark:text-ink-50/40 tabular-nums">
         <span>${new Date(data.days[0].ts).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' })}</span>
@@ -960,7 +997,7 @@ function sectionHistory() {
   }).join('<div class="h-px bg-black/5 dark:bg-white/10 mx-4"></div>');
 
   return `
-    <div class="fade-up rounded-xl2 bg-white dark:bg-ink-900 shadow-card dark:shadow-card-dark overflow-hidden mb-5">
+    <div class="fade-up rounded-xl2 glass-card overflow-hidden mb-5">
       <div class="px-4 pt-4 pb-2 flex items-center justify-between">
         <h3 class="text-[15px] font-bold">Lauf-Historie</h3>
         <span class="text-[12px] text-ink-900/45 dark:text-ink-50/45">${runs.length} ${runs.length === 1 ? 'Eintrag' : 'Einträge'}</span>
@@ -984,7 +1021,7 @@ function sectionBadges(snap) {
   const got = BADGES.filter((b) => b.test(snap)).length;
 
   return `
-    <div class="fade-up rounded-xl2 bg-white dark:bg-ink-900 shadow-card dark:shadow-card-dark p-4 mb-5">
+    <div class="fade-up rounded-xl2 glass-card p-4 mb-5">
       <div class="flex items-center justify-between mb-3 px-1">
         <h3 class="text-[15px] font-bold">Erfolge</h3>
         <span class="text-[12px] text-ink-900/45 dark:text-ink-50/45 tabular-nums">${got}/${BADGES.length}</span>
@@ -1086,7 +1123,7 @@ function openMatchSheet(id) {
         <div class="shrink-0 text-center">${center}</div>
         <div class="flex-1 flex flex-col items-center gap-2 text-center min-w-0">${crest(a, 'crest-lg', true)}<span class="text-[14px] font-semibold">${a.name}</span></div>
       </div>
-      <div class="rounded-xl2 bg-white dark:bg-ink-900 shadow-card dark:shadow-card-dark px-4 divide-y divide-black/5 dark:divide-white/10">
+      <div class="rounded-xl2 glass-card px-4 divide-y divide-black/5 dark:divide-white/10">
         ${info('Wettbewerb', 'FIFA WM 2026')}
         ${info('Runde', stageLabel)}
         ${info('Datum', d.toLocaleDateString('de-DE', { weekday: 'long', day: '2-digit', month: 'long' }))}
@@ -1334,7 +1371,7 @@ function showInstallBanner(kind) {
   el.className = 'fixed inset-x-0 z-50 px-4 fade-up';
   el.style.bottom = 'calc(env(safe-area-inset-bottom) + 4.75rem)';
   el.innerHTML = `
-    <div class="max-w-md mx-auto rounded-2xl bg-white dark:bg-ink-900 shadow-card dark:shadow-card-dark
+    <div class="max-w-md mx-auto rounded-2xl glass-card
                 border border-black/5 dark:border-white/10 p-3 flex items-center gap-3">
       <img src="./icons/icon-192.png" alt="" class="w-10 h-10 rounded-xl shrink-0"/>
       <div class="flex-1 min-w-0">
