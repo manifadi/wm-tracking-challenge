@@ -790,7 +790,7 @@ function viewSchedule() {
     return `
       <section class="fade-up">
         ${sectionTitle(`${t('grp')} ${g}`)}
-        <div class="rounded-xl2 glass-card overflow-hidden">${rows}</div>
+        <div class="rounded-xl2 glass-card overflow-hidden cv">${rows}</div>
       </section>`;
   }).join('');
 
@@ -889,7 +889,7 @@ function dayPicker() {
   const heading = sel === today0 ? 'HEUTE' : `${WEEKDAYS[selD.getDay()]}, ${selD.getDate()}. ${MONTHS[selD.getMonth()]}`;
 
   const list = dayMatches.length
-    ? `<div class="rounded-xl2 glass-card overflow-hidden">${dayMatches.map(matchRow).join('<div class="h-px bg-black/5 dark:bg-white/10 mx-4"></div>')}</div>`
+    ? `<div class="rounded-xl2 glass-card overflow-hidden cv">${dayMatches.map(matchRow).join('<div class="h-px bg-black/5 dark:bg-white/10 mx-4"></div>')}</div>`
     : `<div class="rounded-xl2 glass-card p-6 text-center text-[13px] text-ink-900/45 dark:text-ink-50/45">Keine Spiele an diesem Tag</div>`;
 
   return `
@@ -1047,7 +1047,7 @@ function viewStandings() {
     return `
       <section class="fade-up">
         ${sectionTitle(`${t('grp')} ${g}`)}
-        <div class="rounded-xl2 glass-card overflow-hidden">
+        <div class="rounded-xl2 glass-card overflow-hidden cv">
           <table class="w-full border-collapse">
             <thead>
               <tr class="text-[10px] font-semibold uppercase tracking-wide text-ink-900/35 dark:text-ink-50/35">
@@ -1228,7 +1228,7 @@ function sectionBracket() {
     return `
       <section>
         ${sectionTitle(label)}
-        <div class="rounded-xl2 glass-card overflow-hidden">
+        <div class="rounded-xl2 glass-card overflow-hidden cv">
           ${ms.map(matchRow).join('<div class="h-px bg-black/5 dark:bg-white/10 mx-4"></div>')}
         </div>
       </section>`;
@@ -2264,10 +2264,10 @@ function makeSheetDraggable(root, closeFn) {
     window.removeEventListener('pointermove', onMove);
     window.removeEventListener('pointerup', end);
     window.removeEventListener('pointercancel', end);
-    // Schnell nach unten ODER weit genug → schließen
-    if (curDy > 0 && (vel > 0.5 || curDy > Math.max(110, baseH * 0.25))) { dragClose(); return; }
+    // Schnell nach unten ODER weit genug → schließen (etwas weniger empfindlicher Flick)
+    if (curDy > 0 && (vel > 0.7 || curDy > Math.max(130, baseH * 0.3))) { dragClose(); return; }
     // Schnell nach oben ODER weit genug → vergrößert lassen
-    if (curDy < 0 && (vel < -0.5 || curDy < -70)) {
+    if (curDy < 0 && (vel < -0.7 || curDy < -80)) {
       committedH = Math.round(Math.min(VH() * 0.96, baseH - curDy)) + 'px';
     }
     snapBack();

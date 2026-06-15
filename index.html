@@ -212,8 +212,8 @@
 
     /* ====== Glassy v3 — modernes Frosted-Design ====== */
 
-    /* Ambient-Hintergrund: sanfte Emerald-Glows hinter allem */
-    body { background-attachment: fixed; }
+    /* Ambient-Hintergrund: sanfte Emerald-Glows hinter allem
+       (kein background-attachment:fixed → deutlich smootheres Scrollen auf Mobil) */
     html:not(.dark) body {
       background-image:
         radial-gradient(55% 42% at 88% -8%, rgba(16,185,129,.12), transparent 60%),
@@ -225,12 +225,18 @@
         radial-gradient(48% 38% at -12% 106%, rgba(20,184,166,.12), transparent 60%);
     }
 
+    /* Performance: Off-Screen-Listen nicht rendern (spürbar smootheres Scrollen) */
+    .cv { content-visibility: auto; contain-intrinsic-size: 0 240px; }
+    /* Sheets bekommen eine eigene GPU-Ebene → flüssigeres Ziehen */
+    .sheet { will-change: transform; }
+    .sheet-backdrop { will-change: opacity; }
+
     /* Glass-Karten (frosted, leichter oberer Lichtrand) */
     .glass-card {
       position: relative;
       background: rgba(255,255,255,.70);
-      backdrop-filter: blur(16px) saturate(1.5);
-      -webkit-backdrop-filter: blur(16px) saturate(1.5);
+      backdrop-filter: blur(12px) saturate(1.4);
+      -webkit-backdrop-filter: blur(12px) saturate(1.4);
       border: 1px solid rgba(255,255,255,.6);
       box-shadow: 0 1px 2px rgba(16,24,40,.04), 0 14px 36px -10px rgba(16,24,40,.16);
     }
