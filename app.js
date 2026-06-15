@@ -437,17 +437,25 @@ function viewToday() {
   const liveMatches = state.data.matches
     .filter((m) => m.status === 'IN_PLAY')
     .sort((a, b) => (b.minute || 0) - (a.minute || 0));
-  const next = nextMatch();
 
-  // Live-Strip (horizontale Mini-Karten)
-  const liveStrip = liveMatches.length ? `
+  // EINE große Kachel: läuft ein Spiel → Live-Score, sonst → Countdown zum nächsten Spiel
+  const heroLive = liveMatches[0] || null;
+  const next = nextMatch();
+  const lastFinished = state.data.matches
+    .filter((m) => m.status === 'FINISHED')
+    .sort((a, b) => new Date(b.utcDate) - new Date(a.utcDate))[0] || null;
+  const bigTile = heroLive ? heroCard(heroLive) : (next ? countdownCard(next) : heroCard(lastFinished));
+
+  // Weitere parallel laufende Spiele (das große oben ist hier ausgenommen → keine Doppelung)
+  const others = liveMatches.slice(1);
+  const liveStrip = others.length ? `
     <section>
       <div class="flex items-center gap-2 mb-2 px-1">
         <span class="w-2 h-2 rounded-full bg-wm-red live-dot"></span>
-        <h3 class="text-[13px] font-bold tracking-wide text-ink-900/55 dark:text-ink-50/55">LIVE JETZT</h3>
+        <h3 class="text-[13px] font-bold tracking-wide text-ink-900/55 dark:text-ink-50/55">WEITERE LIVE-SPIELE</h3>
       </div>
       <div class="flex gap-3 overflow-x-auto -mx-5 px-5 pb-1">
-        ${liveMatches.map((m) => {
+        ${others.map((m) => {
           const h = team(m.home), a = team(m.away);
           return `<button data-action="open-match" data-id="${m.id}" class="press shrink-0 w-[150px] rounded-xl2 bg-white dark:bg-ink-900 shadow-card dark:shadow-card-dark p-3 text-left">
             <div class="flex items-center justify-between mb-2">
@@ -458,24 +466,6 @@ function viewToday() {
             <div class="flex items-center gap-2">${crest(a, 'crest-sm')}<span class="text-[13px] font-semibold truncate flex-1">${a.name}</span><span class="score text-[15px]">${m.score.away}</span></div>
           </button>`;
         }).join('')}
-      </div>
-    </section>` : '';
-
-  // Countdown zum nächsten Spiel
-  const countdown = next ? `
-    <section>
-      <div class="rounded-xl2 pitch-grad text-white shadow-card p-5 relative overflow-hidden">
-        <div class="absolute inset-0 opacity-[0.06]" style="background-image:radial-gradient(circle at 1px 1px,#fff 1px,transparent 0);background-size:22px 22px"></div>
-        <div class="relative">
-          <p class="text-[11px] font-bold tracking-widest uppercase text-wm-lime mb-3">Nächstes Spiel · in</p>
-          <div id="countdown" data-target="${+new Date(next.utcDate)}" class="cd-num text-[34px] leading-none mb-3">––:––:––</div>
-          <div class="flex items-center justify-center gap-3">
-            <div class="flex items-center gap-2 flex-1 justify-end min-w-0"><span class="text-[14px] font-semibold truncate">${team(next.home).name}</span>${crest(team(next.home), 'crest-md', true)}</div>
-            <span class="text-[13px] font-bold text-white/50">vs</span>
-            <div class="flex items-center gap-2 flex-1 min-w-0">${crest(team(next.away), 'crest-md', true)}<span class="text-[14px] font-semibold truncate">${team(next.away).name}</span></div>
-          </div>
-          <p class="text-center text-[11px] text-white/55 mt-3">${fmtKickoff(next.utcDate)} Uhr · Gruppe ${next.group}</p>
-        </div>
       </div>
     </section>` : '';
 
@@ -493,13 +483,33 @@ function viewToday() {
     </section>` : '';
 
   return `<div class="stagger space-y-6">
+    ${bigTile}
     ${liveStrip}
-    ${sectionHero()}
-    ${countdown}
     ${challengeSnapshot()}
     ${todayList}
     ${sectionScorers()}
   </div>`;
+}
+
+/** Große Countdown-Kachel zum nächsten Spiel (Pitch-Verlauf) */
+function countdownCard(next) {
+  if (!next) return '';
+  return `
+    <section>
+      <div class="rounded-xl2 pitch-grad text-white shadow-card p-5 relative overflow-hidden">
+        <div class="absolute inset-0 opacity-[0.06]" style="background-image:radial-gradient(circle at 1px 1px,#fff 1px,transparent 0);background-size:22px 22px"></div>
+        <div class="relative">
+          <p class="text-[11px] font-bold tracking-widest uppercase text-wm-lime mb-3">Nächstes Spiel · in</p>
+          <div id="countdown" data-target="${+new Date(next.utcDate)}" class="cd-num text-[34px] leading-none mb-3">––:––:––</div>
+          <div class="flex items-center justify-center gap-3">
+            <div class="flex items-center gap-2 flex-1 justify-end min-w-0"><span class="text-[14px] font-semibold truncate">${team(next.home).name}</span>${crest(team(next.home), 'crest-md', true)}</div>
+            <span class="text-[13px] font-bold text-white/50">vs</span>
+            <div class="flex items-center gap-2 flex-1 min-w-0">${crest(team(next.away), 'crest-md', true)}<span class="text-[14px] font-semibold truncate">${team(next.away).name}</span></div>
+          </div>
+          <p class="text-center text-[11px] text-white/55 mt-3">${fmtKickoff(next.utcDate)} Uhr · Gruppe ${next.group}</p>
+        </div>
+      </div>
+    </section>`;
 }
 
 /** Kompakte Challenge-Bilanz auf „Heute" + Brücke zur Challenge */
@@ -546,20 +556,8 @@ function viewTable() {
   </div>`;
 }
 
-/** Wählt das „Spiel des Moments": laufend → als nächstes → zuletzt beendet */
-function heroMatch() {
-  const ms = state.data.matches;
-  const live = ms.filter((m) => m.status === 'IN_PLAY').sort((a, b) => (b.minute || 0) - (a.minute || 0));
-  if (live.length) return live[0];
-  const next = ms.filter((m) => m.status === 'SCHEDULED').sort((a, b) => new Date(a.utcDate) - new Date(b.utcDate));
-  if (next.length) return next[0];
-  const done = ms.filter((m) => m.status === 'FINISHED').sort((a, b) => new Date(b.utcDate) - new Date(a.utcDate));
-  return done[0] || null;
-}
-
-/** Großes Featured-Match (Pitch-Verlauf) – wie „Top Event" in den Inspo-Designs */
-function sectionHero() {
-  const m = heroMatch();
+/** Große Live-Score-Kachel (Pitch-Verlauf) für ein konkretes Spiel */
+function heroCard(m) {
   if (!m) return '';
   const h = team(m.home), a = team(m.away);
   const live = m.status === 'IN_PLAY', played = isPlayed(m);
