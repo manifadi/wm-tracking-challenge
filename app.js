@@ -348,6 +348,9 @@ function fmtKickoff(iso) {
 const fmtDate = (iso) => new Date(iso).toLocaleDateString('de-DE', { weekday: 'short', day: '2-digit', month: '2-digit', year: 'numeric' });
 const fmtTime = (iso) => new Date(iso).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
 
+// Live-Spielminute robust: „67'" wenn vorhanden, sonst „LIVE" (nie „undefined")
+const liveMinute = (m) => (m.minute != null && m.minute !== '') ? `${m.minute}'` : 'LIVE';
+
 const STATUS_BADGE = {
   FINISHED:  '<span class="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-black/5 dark:bg-white/10 text-ink-900/55 dark:text-ink-50/55">BEENDET</span>',
   IN_PLAY:   '<span class="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-wm-red/15 text-wm-red"><span class="w-1.5 h-1.5 rounded-full bg-wm-red live-dot"></span>LIVE</span>',
@@ -403,7 +406,7 @@ function viewTicker() {
       const center = played
         ? `<div class="score text-[20px] ${live ? 'text-wm-red' : ''}">${m.score.home}<span class="opacity-25 mx-1.5">:</span>${m.score.away}</div>`
         : `<div class="text-[14px] font-bold text-ink-900/55 dark:text-ink-50/55 tabular-nums">${new Date(m.utcDate).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })}</div>`;
-      const sub = live ? `<span class="text-wm-red font-bold">${m.minute}'</span>`
+      const sub = live ? `<span class="text-wm-red font-bold">${liveMinute(m)}</span>`
         : (played ? `<span class="text-ink-900/35 dark:text-ink-50/35">Endstand</span>`
         : `<span class="text-ink-900/35 dark:text-ink-50/35">${fmtKickoff(m.utcDate).split(',')[0]}</span>`);
 
@@ -493,7 +496,7 @@ function sectionHero() {
   const live = m.status === 'IN_PLAY', played = isPlayed(m);
   const label = live ? 'LIVE JETZT' : (played ? 'ZULETZT' : 'NÄCHSTES SPIEL');
   const topRight = live
-    ? `<span class="inline-flex items-center gap-1.5 text-[11px] font-bold px-2.5 py-1 rounded-full bg-wm-red text-white"><span class="w-1.5 h-1.5 rounded-full bg-white live-dot"></span>${m.minute}'</span>`
+    ? `<span class="inline-flex items-center gap-1.5 text-[11px] font-bold px-2.5 py-1 rounded-full bg-wm-red text-white"><span class="w-1.5 h-1.5 rounded-full bg-white live-dot"></span>${liveMinute(m)}</span>`
     : `<span class="text-[11px] font-medium text-white/70">${played ? 'Endstand' : fmtKickoff(m.utcDate)}</span>`;
   const center = played
     ? `<div class="score text-[40px] leading-none">${m.score.home}<span class="opacity-40 mx-2">:</span>${m.score.away}</div>`
@@ -625,7 +628,7 @@ function viewChallenge() {
             <div class="flex items-center gap-1.5 text-[11px] mt-0.5 text-ink-900/45 dark:text-ink-50/45">
               <svg class="w-3 h-3 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
               <span class="tabular-nums">${fmtDate(m.utcDate)} · ${fmtTime(m.utcDate)} Uhr</span>
-              ${m.status === 'IN_PLAY' ? `<span class="text-wm-red font-semibold">· ${m.minute}'</span>` : ''}
+              ${m.status === 'IN_PLAY' ? `<span class="text-wm-red font-semibold">· ${liveMinute(m)}</span>` : ''}
             </div>
             <div class="text-[11px] mt-0.5 ${on ? 'text-wm-green' : 'text-ink-900/35 dark:text-ink-50/35 line-through'}">
               ${g} ${g === 1 ? 'Tor' : 'Tore'} ${on ? 'gewertet' : 'ausgenommen'} · Gruppe ${m.group}
