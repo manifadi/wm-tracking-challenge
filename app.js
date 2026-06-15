@@ -503,16 +503,16 @@ function snapshot() {
 
 /* ---- Badges (Erfolge) ---- */
 const BADGES = [
-  { id: 'first',     icon: '👟', name: 'Erster Lauf',   desc: 'Ersten km eingetragen', test: (s) => s.ran > 0 },
-  { id: 'tenk',      icon: '🔟', name: 'Zweistellig',   desc: '10 km gesamt',          test: (s) => s.ran >= 10 },
-  { id: 'half',      icon: '🏃', name: 'Halbmarathon',  desc: '21,1 km gesamt',        test: (s) => s.ran >= 21.1 },
-  { id: 'marathon',  icon: '🎽', name: 'Marathon',      desc: '42,2 km gesamt',        test: (s) => s.ran >= 42.2 },
-  { id: 'century',   icon: '💯', name: 'Hunderter',     desc: '100 km gesamt',         test: (s) => s.ran >= 100 },
-  { id: 'halfway',   icon: '⏳', name: 'Halbzeit',      desc: '50 % vom Soll',         test: (s) => s.soll > 0 && s.ran >= s.soll / 2 },
-  { id: 'caughtup',  icon: '✅', name: 'Aufgeholt',     desc: 'Soll voll eingeholt',   test: (s) => s.soll > 0 && s.ran >= s.soll },
-  { id: 'streak3',   icon: '🔥', name: '3-Tage-Streak', desc: '3 Tage in Folge',       test: (s) => s.streak >= 3 },
-  { id: 'streak7',   icon: '🌟', name: 'Wochen-Streak', desc: '7 Tage in Folge',       test: (s) => s.streak >= 7 },
-  { id: 'hattrick',  icon: '⚡', name: 'Hattrick',      desc: '3 Läufe an einem Tag',  test: (s) => s.maxRunsPerDay >= 3 },
+  { id: 'first',     icon: 'run',    name: 'Erster Lauf',   desc: 'Ersten km eingetragen', test: (s) => s.ran > 0 },
+  { id: 'tenk',      icon: 'target', name: 'Zweistellig',   desc: '10 km gesamt',          test: (s) => s.ran >= 10 },
+  { id: 'half',      icon: 'run',    name: 'Halbmarathon',  desc: '21,1 km gesamt',        test: (s) => s.ran >= 21.1 },
+  { id: 'marathon',  icon: 'trophy', name: 'Marathon',      desc: '42,2 km gesamt',        test: (s) => s.ran >= 42.2 },
+  { id: 'century',   icon: 'medal',  name: 'Hunderter',     desc: '100 km gesamt',         test: (s) => s.ran >= 100 },
+  { id: 'halfway',   icon: 'flag',   name: 'Halbzeit',      desc: '50 % vom Soll',         test: (s) => s.soll > 0 && s.ran >= s.soll / 2 },
+  { id: 'caughtup',  icon: 'check',  name: 'Aufgeholt',     desc: 'Soll voll eingeholt',   test: (s) => s.soll > 0 && s.ran >= s.soll },
+  { id: 'streak3',   icon: 'flame',  name: '3-Tage-Streak', desc: '3 Tage in Folge',       test: (s) => s.streak >= 3 },
+  { id: 'streak7',   icon: 'star',   name: 'Wochen-Streak', desc: '7 Tage in Folge',       test: (s) => s.streak >= 7 },
+  { id: 'hattrick',  icon: 'bolt',   name: 'Hattrick',      desc: '3 Läufe an einem Tag',  test: (s) => s.maxRunsPerDay >= 3 },
 ];
 
 /* ---- Virtuelle WM-Reise: Gastgeber-Städte mit km-Markern ---- */
@@ -743,7 +743,39 @@ function chipRow(action, active, items) {
 /** Konsistenter Sektions-Titel mit optionaler Aktion rechts */
 function sectionTitle(title, right) {
   return `<div class="flex items-center justify-between mb-2.5 px-1">
-    <h3 class="text-[13px] font-bold tracking-wide uppercase text-ink-900/45 dark:text-ink-50/45">${title}</h3>${right || ''}</div>`;
+    <h3 class="text-[13px] font-bold tracking-wide uppercase text-ink-900/45 dark:text-ink-50/45 inline-flex items-center gap-1.5">${title}</h3>${right || ''}</div>`;
+}
+
+/* ---- Echtes Icon-Set (Lucide-Stil, currentColor) statt Emoji ---- */
+const ICONS = {
+  news: '<path d="M4 5h13v14a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1Z"/><path d="M17 8h2a1 1 0 0 1 1 1v9a2 2 0 0 1-2 2"/><path d="M7.5 8.5h6M7.5 12h6M7.5 15.5h4"/>',
+  ball: '<circle cx="12" cy="12" r="9"/><path d="M12 7.6l3.4 2.5-1.3 4h-4.2l-1.3-4z"/><path d="M12 3.2v4.4M19.4 9.9l-4 3M16 18.4 12 15.6 8 18.4M4.6 9.9l4 3"/>',
+  trophy: '<path d="M7 4h10v5a5 5 0 0 1-10 0Z"/><path d="M7 5H4.6A2.4 2.4 0 0 0 7 10M17 5h2.4A2.4 2.4 0 0 1 17 10"/><path d="M12 14v3M9 20h6M10 20l.5-3h3l.5 3"/>',
+  flame: '<path d="M12 3c1.2 3 4 4.4 4 7.8a4 4 0 0 1-8 0c0-1.6.7-2.7 1.6-3.6C9 9.2 9.6 6 12 3Z"/>',
+  run: '<circle cx="15.5" cy="5" r="1.7"/><path d="M5.5 13.5 9 12l2.3 2.2L13 19"/><path d="M8.5 11.8 11 7.3l3 1.6 3 .5"/><path d="M13.6 11.8 16 16h3"/>',
+  target: '<circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="4.5"/><circle cx="12" cy="12" r="1.2" fill="currentColor" stroke="none"/>',
+  check: '<circle cx="12" cy="12" r="8.5"/><path d="M8.3 12.3l2.6 2.6 4.8-5.4"/>',
+  bolt: '<path d="M13 3 4.5 13.5H10l-1 7.5L19 10.5h-5.5z"/>',
+  medal: '<circle cx="12" cy="14.5" r="5.5"/><path d="M9 9.5 6.5 3.5M15 9.5 17.5 3.5"/><path d="m12 12.2.9 1.8 2 .3-1.45 1.4.35 2-1.8-.95-1.8.95.35-2L9.1 14.3l2-.3z" fill="currentColor" stroke="none"/>',
+  star: '<path d="M12 4l2.3 4.7 5.2.8-3.8 3.6.9 5.1L12 16.8 7.4 18.2l.9-5.1L4.5 9.5l5.2-.8z"/>',
+  flag: '<path d="M5.5 21V4M5.5 4h11l-2 4 2 4h-11"/>',
+  lock: '<rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/>',
+  cloud: '<path d="M7.5 18a4 4 0 1 1 .7-7.95A5 5 0 0 1 18 11a3.5 3.5 0 0 1-1 6.9Z"/>',
+  signal: '<path d="M5 13a9 9 0 0 1 14 0M8 16a5 5 0 0 1 8 0"/><circle cx="12" cy="19" r="1.2" fill="currentColor" stroke="none"/>',
+  swap: '<path d="M7 8h10l-3-3M17 16H7l3 3"/>',
+  party: '<path d="M4 20 9 8l7 7-12 5Z"/><path d="M14 5.5c1.2 0 2 .8 2 2M17 3c2 0 3 1 3 3M13.5 9.5 18 14"/>',
+};
+function ic(name, cls) {
+  const p = ICONS[name]; if (!p) return '';
+  return `<svg class="${cls || 'w-[18px] h-[18px]'}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${p}</svg>`;
+}
+/* Event-Icons fürs Spiel-Detail (Tor/Karte/Wechsel) — teils farbig */
+function evIcon(type) {
+  if (type === 'yellow') return `<span class="inline-block rounded-sm" style="width:11px;height:15px;background:#f5c518"></span>`;
+  if (type === 'red') return `<span class="inline-block rounded-sm" style="width:11px;height:15px;background:#e11d48"></span>`;
+  if (type === 'subst') return `<span class="text-wm-emerald">${ic('swap', 'w-[18px] h-[18px]')}</span>`;
+  if (type === 'owngoal') return `<span class="text-wm-red">${ic('ball', 'w-[17px] h-[17px]')}</span>`;
+  return ic('ball', 'w-[17px] h-[17px]');  // goal/penalty
 }
 
 /* In-Screen-Navigationszustand (nicht persistiert – Default beim Start) */
@@ -1106,7 +1138,7 @@ function sectionScorers(limit, seeAll) {
     : '';
   return `
     <section>
-      ${sectionTitle('⚽️ ' + t('sec.scorers'), right)}
+      ${sectionTitle(ic('ball') + t('sec.scorers'), right)}
       <div class="rounded-xl2 glass-card overflow-hidden">${rows}</div>
     </section>`;
 }
@@ -1184,11 +1216,11 @@ function newsSection() {
   if (!CONFIG.apiBase) return '';
   const items = state.news.today;
   if (items === null) {   // lädt noch
-    return `<section>${sectionTitle('📰 ' + t('sec.news'))}
+    return `<section>${sectionTitle(ic('news') + t('sec.news'))}
       <div class="flex gap-3 -mx-5 px-5 scroll-pl-5"><div class="skeleton rounded-xl2 shrink-0 w-[80%] max-w-[320px]" style="height:280px"></div></div></section>`;
   }
   if (!items.length) return '';   // keine News → Sektion ausblenden
-  return `<section>${sectionTitle('📰 ' + t('sec.news'))}
+  return `<section>${sectionTitle(ic('news') + t('sec.news'))}
     <div class="flex gap-3 overflow-x-auto snap-x snap-mandatory scroll-pl-5 -mx-5 px-5 pb-2">${items.map(newsCard).join('')}</div>
   </section>`;
 }
@@ -1302,7 +1334,7 @@ function challengeRingCard() {
       <div class="flex-1 min-w-0">
         <div class="flex items-center justify-between mb-1">
           <h3 class="text-[14px] font-bold">${t('ch.balance')}</h3>
-          ${streak > 0 ? `<span class="inline-flex items-center gap-1 text-[12px] font-bold px-2 py-0.5 rounded-full bg-wm-red/10 text-wm-red"><span class="flame">🔥</span>${streak}</span>` : ''}
+          ${streak > 0 ? `<span class="inline-flex items-center gap-1 text-[12px] font-bold px-2 py-0.5 rounded-full bg-wm-red/10 text-wm-red"><span class="flame inline-flex">${ic('flame', 'w-3.5 h-3.5')}</span>${streak}</span>` : ''}
         </div>
         <p class="text-[13px] text-ink-900/55 dark:text-ink-50/55 leading-snug">${done ? (en ? 'All goals run! 🎉' : 'Alles gelaufen! 🎉') : `${en ? 'still' : 'noch'} <b class="text-ink-900 dark:text-ink-50">${fmtDistU(open)}</b> ${en ? 'to go' : 'übrig'}`}</p>
         <p class="text-[12px] text-ink-900/45 dark:text-ink-50/45 mt-1 tabular-nums">${fmtDistU(ist)} / ${fmtDistU(soll)} · ${Math.round(pct * 100)} %</p>
@@ -1392,19 +1424,22 @@ function leaderboardCard() {
   if (!loggedIn()) {
     if (!supaConfigured()) return '';
     return `<button data-action="open-auth" class="press w-full text-left fade-up rounded-xl2 glass-card p-4 mb-5 flex items-center gap-3">
-      <span class="text-2xl">🏆</span>
+      <span class="text-wm-emerald">${ic('trophy','w-6 h-6')}</span>
       <span class="flex-1 text-[13px] font-medium text-ink-900/60 dark:text-ink-50/60">${t('rank.signin')}</span>
       <span class="text-[12px] font-semibold text-wm-emerald">${t('auth.signin')} →</span>
     </button>`;
   }
   const c = state.community;
   if (!c || !Array.isArray(c.top) || !c.top.length) return '';
+  const medalBg = { 1: '#E4B458', 2: '#c0c0c0', 3: '#cd7f32' };
   const rows = c.top.map((r) => {
     const name = r.is_me ? (state.settings.nickname || t('rank.you')) : r.name;
-    const medal = r.rank === 1 ? '🥇' : r.rank === 2 ? '🥈' : r.rank === 3 ? '🥉' : '';
+    const rankCell = r.rank <= 3
+      ? `<span class="grid place-items-center w-6 h-6 rounded-full text-[12px] font-extrabold text-white shrink-0" style="background:${medalBg[r.rank]}">${r.rank}</span>`
+      : `<span class="w-6 text-center text-[13px] font-bold tabular-nums text-ink-900/40 dark:text-ink-50/40">${r.rank}</span>`;
     return `
       <div class="flex items-center gap-3 px-4 py-2.5 ${r.is_me ? 'bg-wm-emerald/[0.08]' : ''}">
-        <span class="w-6 text-center text-[13px] font-bold tabular-nums ${r.rank <= 3 ? 'text-wm-gold' : 'text-ink-900/40 dark:text-ink-50/40'}">${medal || r.rank}</span>
+        ${rankCell}
         <p class="flex-1 min-w-0 text-[14px] ${r.is_me ? 'font-bold' : 'font-medium'} truncate">${name}</p>
         <div class="text-right shrink-0">
           <p class="text-[14px] font-bold tabular-nums">${fmtDistU(r.week_km)}</p>
@@ -1414,7 +1449,7 @@ function leaderboardCard() {
   }).join('<div class="h-px bg-black/5 dark:bg-white/10 mx-4"></div>');
   const right = `<span class="text-[12px] text-ink-900/35 dark:text-ink-50/35">${t('rank.players', { n: c.total_players })}</span>`;
   return `<section class="mb-5">
-    ${sectionTitle('🏆 ' + t('rank.title'), right)}
+    ${sectionTitle(ic('trophy') + t('rank.title'), right)}
     <div class="rounded-xl2 glass-card overflow-hidden">${rows}</div>
   </section>`;
 }
@@ -1546,7 +1581,7 @@ function sectionJourney(ist) {
         <div class="bar-fill absolute inset-y-0 left-0 rounded-full" style="width:${(pct * 100).toFixed(1)}%;background:linear-gradient(90deg,#E4B458,#34C759)"></div>
       </div>
       <div class="relative mt-1" style="height:18px">
-        <span class="absolute -translate-x-1/2 text-base leading-none" style="left:${(pct * 100).toFixed(1)}%">🏃</span>
+        <span class="absolute -translate-x-1/2 text-wm-emerald" style="left:${(pct * 100).toFixed(1)}%">${ic('run', 'w-4 h-4')}</span>
       </div>
 
       <div class="flex items-center justify-between gap-1 mt-1">${dots}</div>
@@ -1668,7 +1703,7 @@ function sectionBadges(snap) {
     const got = b.test(snap);
     return `
       <div class="rounded-xl2 p-3 text-center ${got ? 'bg-wm-gold/10' : 'bg-black/[0.03] dark:bg-white/[0.04] opacity-50'}">
-        <div class="text-2xl leading-none ${got ? '' : 'grayscale'}">${b.icon}</div>
+        <div class="grid place-items-center ${got ? 'text-wm-gold' : 'text-ink-900/40 dark:text-ink-50/40'}">${ic(b.icon, 'w-6 h-6')}</div>
         <p class="text-[11px] font-bold mt-1.5 leading-tight">${b.name}</p>
         <p class="text-[10px] text-ink-900/45 dark:text-ink-50/45 leading-tight">${b.desc}</p>
       </div>`;
@@ -1686,7 +1721,7 @@ function sectionBadges(snap) {
 }
 
 /* ===================== SCREEN: EINSTELLUNGEN ===================== */
-const APP_VERSION = '1.14.0';
+const APP_VERSION = '1.14.1';
 
 /** Segment-Control: Optionen [{v,label}], aktiver Wert val, Aktion action */
 function segmented(action, val, options) {
@@ -1732,7 +1767,7 @@ function toggleSwitch(action, on) {
 /** Konto-Sektion: je nach Konfiguration/Login-Status */
 function accountCard() {
   if (!supaConfigured()) {
-    return `<div class="px-4 py-4 text-[13px] text-ink-900/55 dark:text-ink-50/55">🔒 ${t('set.account.soon')}</div>`;
+    return `<div class="px-4 py-4 text-[13px] text-ink-900/55 dark:text-ink-50/55 inline-flex items-center gap-2">${ic('lock', 'w-4 h-4')} ${t('set.account.soon')}</div>`;
   }
   if (loggedIn()) {
     const status = state.auth.syncing
@@ -2015,7 +2050,7 @@ function renderEventsTab(m, detail) {
   const rows = evs.map((e) => {
     const homeSide = e.side === 'home';
     const cell = `<div class="flex items-center gap-2 ${homeSide ? '' : 'flex-row-reverse text-right'}">
-        <span class="text-base leading-none">${EV_ICON[e.type] || '•'}</span>
+        <span class="grid place-items-center w-[18px] shrink-0">${evIcon(e.type)}</span>
         <div class="min-w-0"><p class="text-[13px] font-semibold truncate">${esc(e.player) || t('ev.' + e.type)}</p>
         <p class="text-[10px] text-ink-900/45 dark:text-ink-50/45">${t('ev.' + e.type)}</p></div></div>`;
     return `<div class="flex items-center gap-2 py-2">
@@ -2039,9 +2074,9 @@ function renderInfoTab(m) {
   let news = '';
   if (CONFIG.apiBase) {
     if (m._news === undefined || m._news === null)
-      news = `<div class="mt-5">${sectionTitle('📰 ' + t('sec.news'))}<div class="rounded-xl2 glass-card overflow-hidden"><div class="skeleton" style="height:64px"></div></div></div>`;
+      news = `<div class="mt-5">${sectionTitle(ic('news') + t('sec.news'))}<div class="rounded-xl2 glass-card overflow-hidden"><div class="skeleton" style="height:64px"></div></div></div>`;
     else if (m._news.length)
-      news = `<div class="mt-5">${sectionTitle('📰 ' + t('sec.news'))}<div class="rounded-xl2 glass-card overflow-hidden">${newsRows(m._news)}</div></div>`;
+      news = `<div class="mt-5">${sectionTitle(ic('news') + t('sec.news'))}<div class="rounded-xl2 glass-card overflow-hidden">${newsRows(m._news)}</div></div>`;
   }
   return `
     <div class="rounded-xl2 glass-card px-4 divide-y divide-black/5 dark:divide-white/10">
@@ -2999,7 +3034,7 @@ function renderAuthSheet() {
     <div class="sheet-backdrop" data-action="close-auth"></div>
     <div class="sheet max-w-md mx-auto bg-ink-50 dark:bg-ink-950 rounded-t-[28px] px-5 pb-8 pt-1">
       <div class="grabber" data-drag-handle></div>
-      <div class="w-12 h-12 mx-auto mt-2 mb-3 rounded-2xl grid place-items-center text-2xl shadow-glow" style="background:linear-gradient(135deg,#10B981,#059669)">☁️</div>
+      <div class="w-12 h-12 mx-auto mt-2 mb-3 rounded-2xl grid place-items-center text-2xl shadow-glow text-white" style="background:linear-gradient(135deg,#10B981,#059669)">${ic('cloud','w-6 h-6')}</div>
       <h3 class="text-[18px] font-bold text-center">${t('auth.welcome')}</h3>
       <p class="text-[12px] text-center text-ink-900/50 dark:text-ink-50/50 mb-4 px-4">${t('auth.cloudHint')}</p>
       ${segTabs('auth-mode', authMode, [['signin', t('auth.signin')], ['signup', t('auth.signup')]])}
@@ -3100,9 +3135,9 @@ function showOnboarding() {
       </div>
 
       <div class="space-y-4 mb-8">
-        ${feat('📡', 'onb.f1.t', 'onb.f1.d')}
-        ${feat('🏃', 'onb.f2.t', 'onb.f2.d')}
-        ${feat('🏅', 'onb.f3.t', 'onb.f3.d')}
+        ${feat(ic('signal','w-5 h-5'), 'onb.f1.t', 'onb.f1.d')}
+        ${feat(ic('run','w-5 h-5'), 'onb.f2.t', 'onb.f2.d')}
+        ${feat(ic('trophy','w-5 h-5'), 'onb.f3.t', 'onb.f3.d')}
       </div>
 
       <div class="mt-auto">
@@ -3110,7 +3145,7 @@ function showOnboarding() {
         <button data-action="onb-choose" data-mode="challenge"
                 class="press w-full mb-3 p-4 rounded-2xl text-left glass-chip border border-white/25 active:scale-[.98] transition">
           <div class="flex items-center gap-3">
-            <span class="text-2xl">🏃‍♂️</span>
+            <span class="grid place-items-center w-9 h-9 rounded-xl glass-chip text-white">${ic('run','w-5 h-5')}</span>
             <div class="flex-1 min-w-0">
               <p class="text-[15px] font-bold">${t('onb.challenge.t')}</p>
               <p class="text-[12px] text-white/70">${t('onb.challenge.d')}</p>
@@ -3121,7 +3156,7 @@ function showOnboarding() {
         <button data-action="onb-choose" data-mode="info"
                 class="press w-full p-4 rounded-2xl text-left bg-white/5 border border-white/10 active:scale-[.98] transition">
           <div class="flex items-center gap-3">
-            <span class="text-2xl">📰</span>
+            <span class="grid place-items-center w-9 h-9 rounded-xl bg-white/10 text-white">${ic('news','w-5 h-5')}</span>
             <div class="flex-1 min-w-0">
               <p class="text-[15px] font-bold">${t('onb.info.t')}</p>
               <p class="text-[12px] text-white/70">${t('onb.info.d')}</p>
