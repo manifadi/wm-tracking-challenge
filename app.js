@@ -1686,7 +1686,7 @@ function sectionBadges(snap) {
 }
 
 /* ===================== SCREEN: EINSTELLUNGEN ===================== */
-const APP_VERSION = '1.13.0';
+const APP_VERSION = '1.14.0';
 
 /** Segment-Control: Optionen [{v,label}], aktiver Wert val, Aktion action */
 function segmented(action, val, options) {
@@ -3092,7 +3092,7 @@ function showOnboarding() {
     <div class="hero-spot relative max-w-md mx-auto min-h-full px-6 pt-16 pb-10 flex flex-col"
          style="padding-top:max(env(safe-area-inset-top),3rem)">
       <div class="text-center mb-8">
-        <div class="text-6xl mb-3">⚽️</div>
+        <img src="./icons/wm2026-logo.png" alt="FIFA WM 2026" class="w-24 h-24 rounded-3xl object-cover mx-auto mb-3 shadow-card"/>
         <div class="text-2xl mb-1">🇲🇽 🇺🇸 🇨🇦</div>
         <h1 class="text-[30px] font-extrabold leading-tight mt-3">WM 2026</h1>
         <p class="text-[16px] font-semibold text-wm-lime mt-1">${t('onb.tagline')}</p>

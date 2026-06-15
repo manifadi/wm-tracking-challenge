@@ -1,10 +1,11 @@
 /* Service Worker — App-Shell-Cache (offline) + smarte Strategie für API-Calls. */
-const CACHE = 'wm-challenge-v33';
+const CACHE = 'wm-challenge-v34';
 const ASSETS = [
   './index.html',
   './app.js',
   './manifest.webmanifest',
   './icon.svg',
+  './icons/wm2026-logo.png',
   './icons/icon-180.png',
   './icons/icon-192.png',
   './icons/icon-512.png',
