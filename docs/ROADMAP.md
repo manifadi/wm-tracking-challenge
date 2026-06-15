@@ -84,13 +84,14 @@ Liefert sofort sichtbaren Mehrwert.
 - [ ] 🙋 (optional) **Gebrandete E-Mails**: Resend + Domain, SMTP in Supabase, Templates (§5).
 - [ ] 🤖 (optional, später) Account-Löschung via Edge Function (Client kann sich nur abmelden).
 
-## Phase 5 — Community-Ranking & Live-News (🤖 + 🙋, ⏱️ M)
+## Phase 5 — Community-Ranking & Live-News (✅ v1.5–1.6 · 🙋 SQL + Worker-Deploy)
 
-- [ ] 🤖 Supabase **Edge Function** `ranking`: liefert anonymisiertes Perzentil
-      (deine km vs. alle aktiven Challenger). Ersetzt die Heuristik aus Phase 1.
-- [ ] 🤖 Worker `/api/news?team=…`: Google-News-RSS holen, XML→JSON, cachen.
-      News-Sektion im Spiel-Sheet & auf „Heute".
-- [ ] 🤖 Wochen-Leaderboard (anonym/optional Nickname).
+- [x] 🤖 Community-Ranking via SQL-RPC `community_stats()` (security definer):
+      echtes Perzentil + Wochen-Leaderboard, anonym/optional Nickname. (SQL §3b)
+- [x] 🤖 Worker `GET /api/news?q=…&lang=…`: Google-News-RSS → JSON, Edge-Cache.
+- [x] 🤖 News-Sektion auf „Heute" (allg. WM) + im Spiel-Detail (Info-Tab, Team-News),
+      XSS-sicher (escaped), graceful wenn Worker/Endpoint fehlt.
+- [ ] 🙋 SQL `community_stats` ausführen (für Ranking) + Worker **neu deployen** (für News).
 
 ## Phase 6 — Benachrichtigungen (🤖 + 🙋, ⏱️ M)
 

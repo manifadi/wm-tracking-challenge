@@ -104,11 +104,19 @@ async function fetchBase(env) {
 }
 
 /* =====================================================================
- * QUELLE 2 — API-Football  (Live-Overlay: Minute + Live-Stand)
+ * QUELLE 2 — API-Football  (komplette WM-Fixtures: fixtureId + Live-Stand)
+ * ---------------------------------------------------------------------
+ * Holt die ganze Turnier-Fixture-Liste und ordnet jeder Partie per Team-Paar
+ * eine fixtureId zu → ermöglicht echte Aufstellungen/Statistiken via /api/match
+ * (für ALLE Spiele, nicht nur Live). League/Season via Env überschreibbar.
+ * Hinweis: API-Football-FREE hat KEINEN Zugriff auf Saison 2026 → liefert leer;
+ * mit bezahltem Plan füllt sich das automatisch.
  * ===================================================================== */
-async function fetchLiveOverlay(env) {
-  const res = await fetch('https://v3.football.api-sports.io/fixtures?live=all', {
-    headers: { 'x-apisports-key': env.API_FOOTBALL_KEY }, cf: { cacheTtl: 30 },
+async function fetchFixtures(env) {
+  const league = env.AF_LEAGUE || '1';            // 1 = FIFA World Cup
+  const season = env.AF_SEASON || String(SEASON);
+  const res = await fetch(`https://v3.football.api-sports.io/fixtures?league=${league}&season=${season}`, {
+    headers: { 'x-apisports-key': env.API_FOOTBALL_KEY }, cf: { cacheTtl: 120 },
   });
   if (!res.ok) throw new Error(`api-football ${res.status}`);
   const data = await res.json();
@@ -116,9 +124,9 @@ async function fetchLiveOverlay(env) {
   const map = new Map();
   for (const f of data.response || []) {
     map.set(pairKey(f.teams?.home?.name, f.teams?.away?.name), {
-      status: AF_STATUS[f.fixture?.status?.short] ?? 'IN_PLAY',
-      minute: f.fixture?.status?.elapsed ?? null,
       fixtureId: f.fixture?.id ?? null,
+      status: AF_STATUS[f.fixture?.status?.short] ?? null,
+      minute: f.fixture?.status?.elapsed ?? null,
       score: { home: f.goals?.home ?? null, away: f.goals?.away ?? null },
     });
   }
@@ -210,16 +218,71 @@ async function fetchMatchDetail(env, fixtureId) {
   return { lineups: { home, away }, stats: mapStats(stats, home.teamId), events: mapEvents(events, home.teamId), predicted: false };
 }
 
+/* =====================================================================
+ * QUELLE 5 — Google News RSS  (Live-News, kein Key nötig)
+ * ===================================================================== */
+function decodeEntities(s) {
+  return (s || '')
+    .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1')
+    .replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&apos;/g, "'")
+    .replace(/&amp;/g, '&')
+    .replace(/<[^>]+>/g, '')   // restliche Tags entfernen
+    .trim();
+}
+function parseRss(xml) {
+  const items = [];
+  const re = /<item>([\s\S]*?)<\/item>/g;
+  const grab = (block, tag) => {
+    const m = block.match(new RegExp('<' + tag + '[^>]*>([\\s\\S]*?)<\\/' + tag + '>'));
+    return m ? decodeEntities(m[1]) : '';
+  };
+  let m;
+  while ((m = re.exec(xml))) {
+    const b = m[1];
+    let title = grab(b, 'title');
+    const source = grab(b, 'source');
+    const sourceUrl = (b.match(/<source[^>]*url="([^"]+)"/) || [])[1] || '';
+    // Google-News-Titel enden oft mit „ - Quelle" → abschneiden
+    if (source && title.endsWith(' - ' + source)) title = title.slice(0, -(source.length + 3)).trim();
+    if (title) items.push({ title, link: grab(b, 'link'), source, sourceUrl, published: grab(b, 'pubDate') });
+  }
+  return items;
+}
+async function fetchNews(q, lang) {
+  const en = lang === 'en';
+  const hl = en ? 'en-US' : 'de', gl = en ? 'US' : 'DE', ceid = en ? 'US:en' : 'DE:de';
+  const url = `https://news.google.com/rss/search?q=${encodeURIComponent(q)}&hl=${hl}&gl=${gl}&ceid=${ceid}`;
+  const res = await fetch(url, { cf: { cacheTtl: 600 }, headers: { 'User-Agent': 'Mozilla/5.0' } });
+  if (!res.ok) throw new Error(`news ${res.status}`);
+  return parseRss(await res.text()).slice(0, 12);
+}
+
+/* GNews-API (optional, via Secret GNEWS_KEY): liefert Foto + Intro-Text */
+async function fetchGNews(q, lang, key) {
+  const url = `https://gnews.io/api/v4/search?q=${encodeURIComponent(q)}&lang=${lang === 'en' ? 'en' : 'de'}&max=10&sortby=publishedAt&apikey=${key}`;
+  const res = await fetch(url, { cf: { cacheTtl: 300 } });
+  if (!res.ok) throw new Error(`gnews ${res.status}`);
+  const d = await res.json();
+  return (d.articles || []).map((a) => ({
+    title: a.title, link: a.url, source: (a.source && a.source.name) || '',
+    sourceUrl: (a.source && a.source.url) || '',
+    published: a.publishedAt, image: a.image || '', intro: a.description || '',
+  }));
+}
+
 /* ---- Basis + Live verschmelzen (Live „veredelt" laufende Spiele) ---- */
-function merge(base, liveMap) {
-  if (liveMap && liveMap.size) {
+function merge(base, ovMap) {
+  if (ovMap && ovMap.size) {
     for (const m of base.matches) {
-      const live = liveMap.get(pairKey(m._home, m._away));
-      if (live) {
-        m.status = live.status;
-        m.minute = live.minute;
-        if (live.fixtureId) m.fixtureId = live.fixtureId;   // für /api/match (Detail)
-        if (live.score.home !== null) m.score = live.score;
+      const ov = ovMap.get(pairKey(m._home, m._away));
+      if (ov) {
+        if (ov.fixtureId) m.fixtureId = ov.fixtureId;     // für /api/match (echte Aufstellung)
+        if (ov.status === 'IN_PLAY') {                      // Live „veredeln" (Ergebnis bleibt von football-data)
+          m.status = 'IN_PLAY';
+          m.minute = ov.minute;
+          if (ov.score.home !== null) m.score = ov.score;
+        }
       }
     }
   }
@@ -264,7 +327,7 @@ export default {
 
     const url = new URL(request.url);
     if (url.pathname === '/' ) {
-      return json({ ok: true, service: 'WM 2026 Lauf-Challenge Proxy', endpoints: ['/api/matches', '/api/match?fixture=ID'] }, 60);
+      return json({ ok: true, service: 'WM 2026 Lauf-Challenge Proxy', endpoints: ['/api/matches', '/api/match?fixture=ID', '/api/news?q=…'] }, 60);
     }
 
     // Spiel-Detail (Aufstellung, Statistik, Events) — Edge-gecacht
@@ -281,6 +344,32 @@ export default {
       let payload, ttl = 120;
       try { payload = await fetchMatchDetail(env, fixture); }
       catch (e) { console.error('Detail-Fehler:', e.message); payload = { lineups: null, error: e.message }; ttl = 30; }
+      const res = json(payload, ttl);
+      ctx.waitUntil(cache.put(cacheKey, res.clone()));
+      return res;
+    }
+
+    // Live-News — GNews (Foto+Intro) wenn Key gesetzt, sonst Google-News-RSS. Edge-gecacht.
+    if (url.pathname === '/api/news') {
+      const q = url.searchParams.get('q');
+      const lang = url.searchParams.get('lang') || 'de';
+      const lite = url.searchParams.get('lite');   // erzwingt RSS (für Spiel-Detail, schont Kontingent)
+      if (!q) return new Response('missing q', { status: 400, headers: CORS });
+
+      const cache = caches.default;
+      const cacheKey = new Request(url.toString());
+      const cached = await cache.match(cacheKey);
+      if (cached) return cached;
+
+      let payload, ttl;
+      try {
+        if (env.GNEWS_KEY && !lite) { payload = { items: await fetchGNews(q, lang, env.GNEWS_KEY) }; ttl = 1800; }
+        else { payload = { items: await fetchNews(q, lang) }; ttl = 600; }
+      } catch (e) {
+        console.warn('News primär fehlgeschlagen, RSS-Fallback:', e.message);
+        try { payload = { items: await fetchNews(q, lang) }; ttl = 600; }
+        catch (e2) { payload = { items: [], error: e2.message }; ttl = 60; }
+      }
       const res = json(payload, ttl);
       ctx.waitUntil(cache.put(cacheKey, res.clone()));
       return res;
@@ -303,12 +392,12 @@ export default {
         payload = DEMO; ttl = TTL_BASE;
       } else {
         const base = await fetchBase(env);
-        let liveMap = null;
+        let ovMap = null;
         if (env.API_FOOTBALL_KEY) {
-          try { liveMap = await fetchLiveOverlay(env); }
-          catch (e) { console.warn('Live-Overlay übersprungen:', e.message); } // Basis bleibt nutzbar
+          try { ovMap = await fetchFixtures(env); }
+          catch (e) { console.warn('Fixture-Zuordnung übersprungen:', e.message); } // Basis bleibt nutzbar
         }
-        payload = merge(base, liveMap);
+        payload = merge(base, ovMap);
         try { payload.scorers = await fetchScorers(env); }
         catch (e) { console.warn('Torschützen übersprungen:', e.message); }
         ttl = payload.matches.some((m) => m.status === 'IN_PLAY') ? TTL_LIVE : TTL_BASE;

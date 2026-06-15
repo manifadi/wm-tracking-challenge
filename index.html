@@ -142,6 +142,9 @@
     .seg-btn.seg-active { background:#fff; color:#0e1115; box-shadow:0 1px 3px rgba(0,0,0,.12); }
     html.dark .seg-btn.seg-active { background:#2a2f37; color:#fff; }
 
+    /* ---- Mehrzeiliges Kürzen (News-Cards) ---- */
+    .clamp-2 { display:-webkit-box; -webkit-line-clamp:2; line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+
     /* ---- Filter-Chips (horizontal scrollbar) ---- */
     .chip { white-space:nowrap; padding:7px 15px; border-radius:999px; font-size:13px; font-weight:600; background:rgba(120,120,128,.12); color:rgba(60,60,67,.7); transition:background-color .2s, color .2s, box-shadow .2s; }
     html.dark .chip { background:rgba(120,120,128,.18); color:rgba(235,235,245,.62); }
@@ -265,13 +268,12 @@
   <header class="pt-safe sticky top-0 z-30 backdrop-blur-xl bg-ink-50/80 dark:bg-ink-950/70 border-b border-black/5 dark:border-white/10">
     <div class="max-w-md mx-auto px-5 pb-3 flex items-center justify-between gap-3">
       <div class="flex items-center gap-3 min-w-0">
-        <div class="w-10 h-10 rounded-full grid place-items-center shrink-0 shadow-glow"
-             style="background:linear-gradient(135deg,#10B981,#059669)">
-          <svg viewBox="0 0 32 32" class="w-7 h-7" aria-hidden="true">
-            <circle cx="16" cy="16" r="13" fill="#fff"/>
-            <path d="M16 9 l4.2 3.05 -1.6 4.95 -5.2 0 -1.6-4.95 Z" fill="#0e3b22"/>
-            <path d="M16 9 V3.4 M20.2 12.05 l5-1.7 M18.6 16.95 l3.5 4.5 M13.4 16.95 l-3.5 4.5 M11.8 12.05 l-5-1.7"
-                  stroke="#0e3b22" stroke-width="1.7" stroke-linecap="round" fill="none"/>
+        <div class="w-10 h-10 rounded-2xl grid place-items-center shrink-0 shadow-glow"
+             style="background:linear-gradient(140deg,#34d399,#059669 60%,#047857)">
+          <svg viewBox="0 0 24 24" class="w-[22px] h-[22px]" fill="none" stroke="#fff" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M7 4h10v4.5a5 5 0 0 1-10 0V4Z"/>
+            <path d="M7 5.5H4.6A2.4 2.4 0 0 0 7 10.4M17 5.5h2.4A2.4 2.4 0 0 1 17 10.4"/>
+            <path d="M12 13.5v3M9.2 20h5.6M10 20l.4-3.5h3.2L14 20"/>
           </svg>
         </div>
         <div class="min-w-0">

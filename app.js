@@ -280,7 +280,7 @@ const I18N = {
     'md.probable': 'Voraussichtliche Aufstellung', 'md.coach': 'Trainer', 'md.bench': 'Ersatzbank',
     'md.noLineup': 'Aufstellung noch nicht verfügbar.', 'md.noStats': 'Noch keine Statistik – Spiel nicht gestartet.',
     'md.noEvents': 'Noch keine Ereignisse.',
-    'md.demo': 'Demo-Daten – live kommen echte Aufstellungen & Statistiken.',
+    'md.demo': 'Beispielwerte – echte Statistiken brauchen einen Sport-Datenplan mit Saison-Zugriff.',
     'st.possession': 'Ballbesitz', 'st.shots': 'Torschüsse', 'st.shotsOn': 'aufs Tor', 'st.passes': 'Pässe',
     'st.passAcc': 'Passquote', 'st.corners': 'Ecken', 'st.fouls': 'Fouls', 'st.yellow': 'Gelbe Karten',
     'st.offsides': 'Abseits', 'st.saves': 'Paraden',
@@ -288,6 +288,7 @@ const I18N = {
     'pos.gk': 'TOR', 'pos.def': 'ABW', 'pos.mid': 'MIT', 'pos.fwd': 'ANG',
     'ch.progress': 'Fortschritt', 'ch.history': 'Verlauf', 'ch.ach': 'Erfolge',
     'f.all': 'Alle', 'f.live': 'Live', 'f.today': 'Heute', 'f.upcoming': 'Kommend', 'f.finished': 'Beendet',
+    'sec.news': 'News', 'news.empty': 'Aktuell keine News.',
     'sec.scorers': 'Torschützenkönige', 'sec.allMatches': 'Alle Spiele', 'sec.seeAll': 'Alle anzeigen',
     'sec.standings': 'Tabellen', 'sec.bracket': 'K.-o.-Runde', 'sec.weighting': 'Spiele werten',
     'sec.weighting.d': 'Schalter aus = Tore dieses Spiels zählen nicht zum Soll.',
@@ -345,7 +346,7 @@ const I18N = {
     'md.probable': 'Probable line-up', 'md.coach': 'Coach', 'md.bench': 'Bench',
     'md.noLineup': 'Line-up not available yet.', 'md.noStats': 'No stats yet – match not started.',
     'md.noEvents': 'No events yet.',
-    'md.demo': 'Demo data – live brings real line-ups & stats.',
+    'md.demo': 'Sample values – real stats need a sports-data plan with season access.',
     'st.possession': 'Possession', 'st.shots': 'Shots', 'st.shotsOn': 'on target', 'st.passes': 'Passes',
     'st.passAcc': 'Pass accuracy', 'st.corners': 'Corners', 'st.fouls': 'Fouls', 'st.yellow': 'Yellow cards',
     'st.offsides': 'Offsides', 'st.saves': 'Saves',
@@ -353,6 +354,7 @@ const I18N = {
     'pos.gk': 'GK', 'pos.def': 'DEF', 'pos.mid': 'MID', 'pos.fwd': 'FWD',
     'ch.progress': 'Progress', 'ch.history': 'History', 'ch.ach': 'Awards',
     'f.all': 'All', 'f.live': 'Live', 'f.today': 'Today', 'f.upcoming': 'Upcoming', 'f.finished': 'Finished',
+    'sec.news': 'News', 'news.empty': 'No news right now.',
     'sec.scorers': 'Top scorers', 'sec.allMatches': 'All matches', 'sec.seeAll': 'See all',
     'sec.standings': 'Standings', 'sec.bracket': 'Knockout stage', 'sec.weighting': 'Count matches',
     'sec.weighting.d': 'Switch off = this match’s goals don’t count toward your target.',
@@ -410,6 +412,7 @@ const state = {
   onboarded: load(LS.onboarded, false),       // Welcome-Screen schon gesehen?
   auth: { user: null, ready: false, syncing: false },   // Supabase-Login-Status
   community: null,                                       // Community-Ranking (vom Server)
+  news: { today: null },                                // Live-News (null = noch nicht geladen)
 };
 
 function persist() {
@@ -842,6 +845,7 @@ function viewToday() {
     ${state.settings.challengeEnabled ? challengeSnapshot() : ''}
     ${dayPicker()}
     ${sectionScorers(3, true)}
+    ${newsSection()}
   </div>`;
 }
 
@@ -1088,6 +1092,107 @@ function sectionScorers(limit, seeAll) {
       ${sectionTitle('⚽️ ' + t('sec.scorers'), right)}
       <div class="rounded-xl2 glass-card overflow-hidden">${rows}</div>
     </section>`;
+}
+
+/* ------------------------------------------------------------------ *
+ * 5c) LIVE-NEWS  (Google News RSS über den Worker, Edge-gecacht)
+ * ------------------------------------------------------------------ */
+const esc = (s) => String(s == null ? '' : s)
+  .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+
+function timeAgo(iso) {
+  const t0 = +new Date(iso);
+  if (isNaN(t0)) return '';
+  const s = Math.max(0, (Date.now() - t0) / 1000), en = getLang() === 'en';
+  if (s < 3600) { const m = Math.max(1, Math.round(s / 60)); return en ? `${m}m ago` : `vor ${m} Min`; }
+  if (s < 86400) { const h = Math.round(s / 3600); return en ? `${h}h ago` : `vor ${h} Std`; }
+  const d = Math.round(s / 86400); return en ? `${d}d ago` : `vor ${d} Tg`;
+}
+
+async function fetchNews(q, lite) {
+  if (!CONFIG.apiBase) return [];
+  try {
+    const r = await fetch(`${CONFIG.apiBase}/api/news?q=${encodeURIComponent(q)}&lang=${getLang()}${lite ? '&lite=1' : ''}`);
+    if (!r.ok) return [];
+    const d = await r.json();
+    return Array.isArray(d.items) ? d.items : [];
+  } catch { return []; }
+}
+
+/* ---- Listen-Darstellung (Spiel-Detail / Info-Tab) ---- */
+function newsRows(items) {
+  return items.map((it) => {
+    const meta = [it.source, timeAgo(it.published)].filter(Boolean).map(esc).join(' · ');
+    const safeLink = /^https?:\/\//i.test(it.link || '') ? it.link : '#';
+    return `<a href="${esc(safeLink)}" target="_blank" rel="noopener noreferrer" class="press block px-4 py-3">
+      <p class="text-[14px] font-semibold leading-snug">${esc(it.title)}</p>
+      ${meta ? `<p class="text-[11px] text-ink-900/45 dark:text-ink-50/45 mt-1">${meta}</p>` : ''}
+    </a>`;
+  }).join('<div class="h-px bg-black/5 dark:bg-white/10 mx-4"></div>');
+}
+
+/* ---- Swipe-Carousel (Heute): Foto, Headline, Intro, „mehr dazu →" ---- */
+const faviconUrl = (sourceUrl) => {
+  try { return `https://www.google.com/s2/favicons?domain=${new URL(sourceUrl).hostname}&sz=128`; }
+  catch { return ''; }
+};
+function newsCard(it) {
+  const meta = [esc(it.source), timeAgo(it.published)].filter(Boolean).join(' · ');
+  const safe = /^https?:\/\//i.test(it.link || '') ? it.link : '#';
+  const more = getLang() === 'en' ? 'more' : 'mehr dazu';
+  const fav = it.sourceUrl ? faviconUrl(it.sourceUrl) : '';
+  // Bild-Bereich: echtes Foto (GNews) → sonst Quelle-Logo auf Gradient → sonst nur Gradient
+  const media = it.image
+    ? `<img src="${esc(it.image)}" alt="" loading="lazy" class="absolute inset-0 w-full h-full object-cover" onerror="this.remove()">`
+    : (fav ? `<div class="absolute inset-0 grid place-items-center"><img src="${esc(fav)}" alt="" loading="lazy" class="w-12 h-12 rounded-xl bg-white/90 p-1.5 shadow" onerror="this.remove()"></div>` : '');
+  return `<a href="${esc(safe)}" target="_blank" rel="noopener noreferrer"
+    class="snap-start shrink-0 w-[80%] max-w-[320px] rounded-xl2 glass-card overflow-hidden press flex flex-col">
+    <div class="relative w-full h-36" style="background:linear-gradient(135deg,#10B981,#047857)">
+      ${media}
+      ${it.source ? `<span class="absolute top-2 left-2 text-[10px] font-bold text-white px-2 py-0.5 rounded-full" style="background:rgba(0,0,0,.5)">${esc(it.source)}</span>` : ''}
+    </div>
+    <div class="p-4 flex-1 flex flex-col">
+      <p class="text-[15px] font-bold leading-snug clamp-2">${esc(it.title)}</p>
+      ${it.intro ? `<p class="text-[12px] text-ink-900/55 dark:text-ink-50/55 leading-snug mt-1.5 clamp-2">${esc(it.intro)}</p>` : ''}
+      <div class="mt-auto pt-3 flex items-center justify-between gap-2">
+        <span class="text-[11px] text-ink-900/40 dark:text-ink-50/40 truncate">${meta}</span>
+        <span class="text-[12px] font-semibold text-wm-emerald whitespace-nowrap">${more} →</span>
+      </div>
+    </div>
+  </a>`;
+}
+
+/** News-Carousel auf „Heute" (horizontal swipebar) */
+function newsSection() {
+  if (!CONFIG.apiBase) return '';
+  const items = state.news.today;
+  if (items === null) {   // lädt noch
+    return `<section>${sectionTitle('📰 ' + t('sec.news'))}
+      <div class="flex gap-3 -mx-5 px-5 scroll-pl-5"><div class="skeleton rounded-xl2 shrink-0 w-[80%] max-w-[320px]" style="height:280px"></div></div></section>`;
+  }
+  if (!items.length) return '';   // keine News → Sektion ausblenden
+  return `<section>${sectionTitle('📰 ' + t('sec.news'))}
+    <div class="flex gap-3 overflow-x-auto snap-x snap-mandatory scroll-pl-5 -mx-5 px-5 pb-2">${items.map(newsCard).join('')}</div>
+  </section>`;
+}
+
+let _newsBusy = false;
+async function maybeLoadTodayNews() {
+  if (state.news.today !== null || _newsBusy || !CONFIG.apiBase) return;
+  _newsBusy = true;
+  const q = getLang() === 'en' ? 'FIFA World Cup 2026' : 'Fußball WM 2026';
+  state.news.today = await fetchNews(q);
+  _newsBusy = false;
+  if (state.tab === 'today') render();
+}
+
+/** Team-News im Spiel-Detail (Info-Tab) nachladen */
+async function loadMatchNews(m) {
+  if (m._news !== undefined) return;   // undefined=nie geladen, null=lädt, []/[…]=fertig
+  m._news = null;
+  const items = await fetchNews(`${team(m.home).name} ${team(m.away).name}`, true);   // lite=RSS
+  m._news = items;
+  if (currentSheetMatch === m && matchSheetTab === 'info') renderSheetContent();
 }
 
 /* ---- K.o.-Baum (Knockout) ---- */
@@ -1539,7 +1644,7 @@ function sectionBadges(snap) {
 }
 
 /* ===================== SCREEN: EINSTELLUNGEN ===================== */
-const APP_VERSION = '1.5.2';
+const APP_VERSION = '1.8.0';
 
 /** Segment-Control: Optionen [{v,label}], aktiver Wert val, Aktion action */
 function segmented(action, val, options) {
@@ -1703,6 +1808,7 @@ function render() {
   stopCountdown();
   if (state.tab === 'today') {
     startCountdown();
+    maybeLoadTodayNews();   // Live-News im Hintergrund laden
     // gewählten Kalender-Tag zentriert in den sichtbaren Bereich scrollen
     document.querySelector('#day-strip [data-active]')
       ?.scrollIntoView({ inline: 'center', block: 'nearest' });
@@ -2009,6 +2115,17 @@ function renderInfoTab(m) {
   const stageLabel = (KO_STAGES.find(([k]) => k === m.stage) || [])[1] || (m.group && m.group !== '–' ? `${en ? 'Group' : 'Gruppe'} ${m.group}` : 'WM 2026');
   const info = (label, val) => `<div class="flex items-center justify-between py-3"><span class="text-[13px] text-ink-900/50 dark:text-ink-50/50">${label}</span><span class="text-[14px] font-semibold text-right">${val}</span></div>`;
   const locale = en ? 'en-GB' : 'de-DE';
+  // Team-News (lädt asynchron via loadMatchNews): undefined/null = lädt, []=keine, [..]=anzeigen
+  let news = '';
+  if (CONFIG.apiBase) {
+    if (m._news === undefined || m._news === null) {
+      news = `<div class="mt-4">${sectionTitle('📰 ' + t('sec.news'))}
+        <div class="rounded-xl2 glass-card overflow-hidden"><div class="skeleton" style="height:64px"></div></div></div>`;
+    } else if (m._news.length) {
+      news = `<div class="mt-4">${sectionTitle('📰 ' + t('sec.news'))}
+        <div class="rounded-xl2 glass-card overflow-hidden">${newsRows(m._news)}</div></div>`;
+    }
+  }
   return `<div class="rounded-xl2 glass-card px-4 divide-y divide-black/5 dark:divide-white/10">
     ${info(en ? 'Competition' : 'Wettbewerb', 'FIFA WM 2026')}
     ${info(en ? 'Round' : 'Runde', stageLabel)}
@@ -2016,37 +2133,36 @@ function renderInfoTab(m) {
     ${info(en ? 'Kick-off' : 'Anstoß', fmtTime(m.utcDate) + (en ? '' : ' Uhr'))}
     ${m.venue ? info(en ? 'Stadium' : 'Stadion', m.venue) : ''}
     ${info('Status', live ? `${en ? 'Live' : 'Läuft'} – ${liveMinute(m)}` : (played ? (en ? 'Finished' : 'Beendet') : (en ? 'Not started' : 'Noch nicht angepfiffen')))}
-  </div>`;
+  </div>${news}`;
 }
 
 let currentSheetMatch = null;
-let matchSheetTab = 'lineup';
+let matchSheetTab = 'stats';
 
 function renderSheetContent() {
   const m = currentSheetMatch;
   const host = document.getElementById('sheet-content');
   if (!m || !host) return;
   const detail = currentDetail(m);
-  const tabs = [['lineup', 'md.lineup'], ['stats', 'md.stats'], ['events', 'md.events'], ['info', 'md.info']];
+  // Aufstellung/Verlauf entfernt (im Free-Plan keine echten Spielerdaten verfügbar)
+  if (matchSheetTab !== 'stats' && matchSheetTab !== 'info') matchSheetTab = 'stats';
+  const tabs = [['stats', 'md.stats'], ['info', 'md.info']];
   const seg = `<div class="flex gap-1 p-1 rounded-xl bg-black/5 dark:bg-white/10 mb-4 sticky top-0 z-10">
     ${tabs.map(([k, lk]) => `<button data-action="sheet-tab" data-tab="${k}"
       class="flex-1 py-2 rounded-lg text-[12px] font-semibold transition press ${k === matchSheetTab
         ? 'bg-white dark:bg-ink-800 shadow text-ink-900 dark:text-ink-50'
         : 'text-ink-900/50 dark:text-ink-50/50'}">${t(lk)}</button>`).join('')}
   </div>`;
-  let panel;
-  if (matchSheetTab === 'lineup') panel = renderLineupTab(m, detail);
-  else if (matchSheetTab === 'stats') panel = renderStatsTab(m, detail);
-  else if (matchSheetTab === 'events') panel = renderEventsTab(m, detail);
-  else panel = renderInfoTab(m);
+  const panel = matchSheetTab === 'info' ? renderInfoTab(m) : renderStatsTab(m, detail);
   host.innerHTML = seg + `<div>${panel}</div>`;
+  if (matchSheetTab === 'info') loadMatchNews(m);   // Team-News nachladen
 }
 
 function openMatchSheet(id) {
   const m = state.data.matches.find((x) => x.id === id);
   if (!m) return;
   currentSheetMatch = m;
-  matchSheetTab = 'lineup';
+  matchSheetTab = 'stats';
   const h = team(m.home), a = team(m.away);
   const live = m.status === 'IN_PLAY', played = isPlayed(m), en = getLang() === 'en';
 

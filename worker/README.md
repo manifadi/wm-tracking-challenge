@@ -62,6 +62,8 @@ Dann in `wrangler.toml` `DEMO_MODE = "false"` setzen und erneut `npx wrangler de
   (Aufstellung mit Spieler-Fotos, Statistik & Verlauf für das Detail-Sheet).
   Cache 120 s. Ohne API-Football-Key / im Demo-Modus kommt `{ lineups: null }` —
   die App nutzt dann ihren eigenen, deterministischen Demo-Fallback.
+- `GET /api/news?q=…&lang=de|en` → `{ items:[{title,link,source,published}] }`
+  (Live-News via Google-News-RSS, **kein Key nötig**, Cache 600 s).
 
 > Die `fixtureId` für `/api/match` stammt aktuell aus dem Live-Overlay (deckt also
 > **laufende** Spiele ab). Für beendete/geplante Partien greift der App-seitige
