@@ -565,16 +565,25 @@ function rankBadge(idx, size) {
   const a = RANK_ART[idx] || RANK_ART[0];
   const id = 'rb' + (_rbSeq++);
   const glyph = a.glyph === 'crown'
-    ? `<path d="M18 41 L16 26 L24 33 L32 22 L40 33 L48 26 L46 41 Z" fill="#fff"/><rect x="18" y="43.5" width="28" height="4" rx="1.5" fill="#fff"/>`
+    ? `<path d="M18 41 L16 26 L24 33 L32 22 L40 33 L48 26 L46 41 Z" fill="#fff"/><rect x="18" y="43.5" width="28" height="4" rx="1.5" fill="#fff"/><circle cx="32" cy="22" r="1.8" fill="#fff"/>`
     : a.glyph === 'gem'
     ? `<path d="M22 25 H42 L47 31 L32 46 L17 31 Z" fill="#fff"/><path d="M17 31 H47 M27 31 L32 46 M37 31 L32 46 M22 25 L27 31 M42 25 L37 31" stroke="${a.c2}" stroke-width="1.1" fill="none" opacity=".5"/>`
     : `<path d="M32 19 L35 27.8 L44.4 28 L37 33.6 L39.6 42.5 L32 37.2 L24.4 42.5 L27 33.6 L19.6 28 L29 27.8 Z" fill="#fff"/>`;
-  return `<svg viewBox="0 0 64 64" width="${s}" height="${s}" aria-hidden="true" style="display:block;filter:drop-shadow(0 2px 4px rgba(0,0,0,.18))">
-    <defs><linearGradient id="${id}" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="${a.c1}"/><stop offset="1" stop-color="${a.c2}"/></linearGradient></defs>
+  // Nieten am Rand (Relief)
+  let studs = '';
+  for (let k = 0; k < 12; k++) { const ang = (k / 12) * Math.PI * 2; studs += `<circle cx="${(32 + 25.5 * Math.cos(ang)).toFixed(1)}" cy="${(32 + 25.5 * Math.sin(ang)).toFixed(1)}" r="1.5" fill="#fff" opacity=".45"/>`; }
+  // Strahlenkranz für Top-Ligen (Platin+)
+  const rays = idx >= 4 ? `<g opacity=".22">${[0, 1, 2, 3, 4, 5, 6, 7].map((k) => `<rect x="30.7" y="5" width="2.6" height="9" rx="1.3" fill="#fff" transform="rotate(${k * 45} 32 32)"/>`).join('')}</g>` : '';
+  return `<svg viewBox="0 0 64 64" width="${s}" height="${s}" aria-hidden="true" style="display:block;filter:drop-shadow(0 3px 5px rgba(0,0,0,.22))">
+    <defs><radialGradient id="${id}" cx="50%" cy="36%" r="68%">
+      <stop offset="0" stop-color="${a.c1}"/><stop offset="1" stop-color="${a.c2}"/></radialGradient></defs>
+    <path d="M23 49 L23 62 L32 57 L41 62 L41 49 Z" fill="${a.c2}"/>
     <circle cx="32" cy="32" r="29" fill="url(#${id})"/>
-    <circle cx="32" cy="32" r="29" fill="none" stroke="#fff" stroke-opacity=".55" stroke-width="2"/>
-    <path d="M14 23 A30 30 0 0 1 50 17" stroke="#fff" stroke-opacity=".35" stroke-width="3" fill="none" stroke-linecap="round"/>
+    ${rays}
+    <circle cx="32" cy="32" r="29" fill="none" stroke="#fff" stroke-opacity=".6" stroke-width="2"/>
+    <circle cx="32" cy="32" r="23.5" fill="none" stroke="#fff" stroke-opacity=".22" stroke-width="1"/>
+    ${studs}
+    <path d="M13 22 A30 30 0 0 1 51 16" stroke="#fff" stroke-opacity=".4" stroke-width="3" fill="none" stroke-linecap="round"/>
     ${glyph}
   </svg>`;
 }
@@ -904,12 +913,19 @@ function dayPicker() {
 }
 
 /** Große Countdown-Kachel zum nächsten Spiel (Pitch-Verlauf) */
+/** Große, dezente Wappen als Wasserzeichen hinter Hero-Cards (echte Crests) */
+function heroWatermarks(h, a) {
+  const img = (t, style) => { const u = crestUrl(t); return u ? `<img src="${u}" alt="" loading="lazy" aria-hidden="true" class="absolute pointer-events-none select-none" style="${style};width:152px;height:152px;object-fit:contain;opacity:.09">` : ''; };
+  return img(h, 'left:-36px;top:-28px;') + img(a, 'right:-36px;bottom:-24px;');
+}
+
 function countdownCard(next) {
   if (!next) return '';
   return `
     <section>
       <div class="hero-spot rounded-xl3 pitch-grad text-white shadow-card p-6 relative overflow-hidden">
         <div class="absolute inset-0 opacity-[0.06]" style="background-image:radial-gradient(circle at 1px 1px,#fff 1px,transparent 0);background-size:22px 22px"></div>
+        ${heroWatermarks(team(next.home), team(next.away))}
         ${pitchLines()}
         <div class="relative">
           <p class="text-[11px] font-bold tracking-widest uppercase text-wm-lime mb-3">Nächstes Spiel · in</p>
@@ -986,6 +1002,7 @@ function heroCard(m) {
   return `
     <button data-action="open-match" data-id="${m.id}" class="press hero-spot block w-full text-left pitch-grad rounded-xl3 p-6 text-white shadow-card relative overflow-hidden">
       <div class="absolute inset-0 opacity-[0.06]" style="background-image:radial-gradient(circle at 1px 1px,#fff 1px,transparent 0);background-size:22px 22px"></div>
+      ${heroWatermarks(h, a)}
       ${pitchLines()}
       <div class="relative">
         <div class="flex items-center justify-between mb-5">
@@ -1644,7 +1661,7 @@ function sectionBadges(snap) {
 }
 
 /* ===================== SCREEN: EINSTELLUNGEN ===================== */
-const APP_VERSION = '1.10.0';
+const APP_VERSION = '1.11.0';
 
 /** Segment-Control: Optionen [{v,label}], aktiver Wert val, Aktion action */
 function segmented(action, val, options) {
