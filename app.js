@@ -1686,7 +1686,7 @@ function sectionBadges(snap) {
 }
 
 /* ===================== SCREEN: EINSTELLUNGEN ===================== */
-const APP_VERSION = '1.12.0';
+const APP_VERSION = '1.13.0';
 
 /** Segment-Control: Optionen [{v,label}], aktiver Wert val, Aktion action */
 function segmented(action, val, options) {
@@ -2063,8 +2063,12 @@ async function loadDetail(m) {
   if (!CONFIG.apiBase) { m._detail = {}; return; }
   const d = new Date(m.utcDate);
   const ymd = `${d.getUTCFullYear()}${String(d.getUTCMonth() + 1).padStart(2, '0')}${String(d.getUTCDate()).padStart(2, '0')}`;
+  // espnId (vom Live-Overlay) → direkt; sonst über Datum + Teamnamen auflösen
+  const q = m.espnId
+    ? `event=${encodeURIComponent(m.espnId)}`
+    : `home=${encodeURIComponent(team(m.home).name)}&away=${encodeURIComponent(team(m.away).name)}&date=${ymd}`;
   try {
-    const r = await fetch(`${CONFIG.apiBase}/api/detail?home=${encodeURIComponent(team(m.home).name)}&away=${encodeURIComponent(team(m.away).name)}&date=${ymd}`);
+    const r = await fetch(`${CONFIG.apiBase}/api/detail?${q}`);
     m._detail = r.ok ? await r.json() : {};
   } catch { m._detail = {}; }
   if (currentSheetMatch === m) renderSheetContent();

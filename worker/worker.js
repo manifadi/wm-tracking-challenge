@@ -267,6 +267,47 @@ function espnPickStat(list, name) {
   return v;
 }
 
+/* Live-Scoring von ESPN (Minute + Live-Stand + espnId) für heutige Spiele */
+async function espnLive() {
+  const now = new Date();
+  const ymd = `${now.getUTCFullYear()}${String(now.getUTCMonth() + 1).padStart(2, '0')}${String(now.getUTCDate()).padStart(2, '0')}`;
+  const d = await espnGet(`/scoreboard?dates=${ymd}`, 30);
+  return (d.events || []).map((e) => {
+    const c = (e.competitions || [])[0] || {}; const st = c.status || {};
+    const comp = c.competitors || [];
+    const H = comp.find((x) => x.homeAway === 'home') || {}, A = comp.find((x) => x.homeAway === 'away') || {};
+    const state = (st.type || {}).state;
+    return {
+      espnId: e.id,
+      home: (H.team || {}).displayName || '', away: (A.team || {}).displayName || '',
+      status: state === 'in' ? 'IN_PLAY' : state === 'post' ? 'FINISHED' : 'SCHEDULED',
+      minute: state === 'in' ? String(st.displayClock || '').replace(/'/g, '') : null,
+      score: { home: H.score != null ? Number(H.score) : null, away: A.score != null ? Number(A.score) : null },
+    };
+  });
+}
+
+/* ESPN-Live über die football-data-Basis legen (Minute, Live-Stand, espnId) */
+function mergeEspn(base, arr) {
+  if (!arr || !arr.length) return base;
+  for (const m of base.matches) {
+    const ev = arr.find((e) =>
+      (nameMatch(e.home, m._home) && nameMatch(e.away, m._away)) ||
+      (nameMatch(e.home, m._away) && nameMatch(e.away, m._home)));
+    if (!ev) continue;
+    if (ev.espnId) m.espnId = ev.espnId;
+    const swapped = !nameMatch(ev.home, m._home);
+    const sc = swapped ? { home: ev.score.away, away: ev.score.home } : ev.score;
+    if (ev.status === 'IN_PLAY') {
+      m.status = 'IN_PLAY'; m.minute = ev.minute;
+      if (sc.home != null) m.score = sc;
+    } else if (ev.status === 'FINISHED' && m.score.home == null && sc.home != null) {
+      m.status = 'FINISHED'; m.score = sc;
+    }
+  }
+  return base;
+}
+
 function espnLineup(r) {
   const formation = r.formation || '';
   const sizes = formation.split('-').map((n) => parseInt(n)).filter(Boolean);
@@ -566,14 +607,11 @@ export default {
         payload = DEMO; ttl = TTL_BASE;
       } else {
         const base = await fetchBase(env);
-        let ovMap = null;
-        // API-Football nur, wenn explizit aktiviert (Free-Plan hat keinen 2026-Zugriff →
-        // sonst nur verschwendetes Kontingent). Mit bezahltem Plan: AF_ENABLE="true".
-        if (env.API_FOOTBALL_KEY && env.AF_ENABLE === 'true') {
-          try { ovMap = await fetchFixtures(env); }
-          catch (e) { console.warn('Fixture-Zuordnung übersprungen:', e.message); }
-        }
-        payload = merge(base, ovMap);
+        // ESPN-Live-Overlay: echte Minute + Live-Stand + espnId (gratis, ohne Credits)
+        try { mergeEspn(base, await espnLive()); }
+        catch (e) { console.warn('ESPN-Overlay übersprungen:', e.message); }   // Basis bleibt nutzbar
+        for (const m of base.matches) { delete m._home; delete m._away; delete m._hName; delete m._aName; }
+        payload = base;
         try { payload.scorers = await fetchScorers(env); }
         catch (e) { console.warn('Torschützen übersprungen:', e.message); }
         ttl = payload.matches.some((m) => m.status === 'IN_PLAY') ? TTL_LIVE : TTL_BASE;

@@ -1,5 +1,5 @@
 /* Service Worker — App-Shell-Cache (offline) + smarte Strategie für API-Calls. */
-const CACHE = 'wm-challenge-v32';
+const CACHE = 'wm-challenge-v33';
 const ASSETS = [
   './index.html',
   './app.js',
