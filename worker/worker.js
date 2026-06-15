@@ -206,6 +206,24 @@ function mapEvents(arr, homeId) {
   }).filter(Boolean).sort((a, b) => a.minute - b.minute);
 }
 
+/* Echte Zusatzinfos eines Spiels von football-data (Halbzeit, Schiri, Stadion) */
+async function fetchMatchInfo(env, id) {
+  const r = await fetch(`https://api.football-data.org/v4/matches/${id}`, {
+    headers: { 'X-Auth-Token': env.FOOTBALL_DATA_KEY }, cf: { cacheTtl: 120 },
+  });
+  if (!r.ok) throw new Error(`fd match ${r.status}`);
+  const d = await r.json();
+  const ref = (d.referees || []).find((x) => x.type === 'REFEREE') || (d.referees || [])[0] || null;
+  return {
+    fullTime: d.score?.fullTime || null,
+    halfTime: d.score?.halfTime || null,
+    winner: d.score?.winner || null,
+    venue: d.venue || null,
+    matchday: d.matchday || null,
+    referee: ref ? { name: ref.name, nationality: ref.nationality || '' } : null,
+  };
+}
+
 async function fetchMatchDetail(env, fixtureId) {
   const [lineups, stats, events] = await Promise.all([
     afGet(env, `/fixtures/lineups?fixture=${fixtureId}`).catch(() => []),
@@ -327,7 +345,24 @@ export default {
 
     const url = new URL(request.url);
     if (url.pathname === '/' ) {
-      return json({ ok: true, service: 'WM 2026 Lauf-Challenge Proxy', endpoints: ['/api/matches', '/api/match?fixture=ID', '/api/news?q=…'] }, 60);
+      return json({ ok: true, service: 'WM 2026 Lauf-Challenge Proxy', endpoints: ['/api/matches', '/api/matchinfo?id=ID', '/api/news?q=…'] }, 60);
+    }
+
+    // Echte Match-Zusatzinfos (Halbzeit, Schiedsrichter, Stadion) von football-data
+    if (url.pathname === '/api/matchinfo') {
+      const id = url.searchParams.get('id');
+      if (!id) return new Response('missing id', { status: 400, headers: CORS });
+      if (!env.FOOTBALL_DATA_KEY) return json({}, 60);
+      const cache = caches.default;
+      const cacheKey = new Request(url.toString());
+      const cached = await cache.match(cacheKey);
+      if (cached) return cached;
+      let payload, ttl = 300;
+      try { payload = await fetchMatchInfo(env, id); }
+      catch (e) { console.warn('matchinfo:', e.message); payload = { error: e.message }; ttl = 60; }
+      const res = json(payload, ttl);
+      ctx.waitUntil(cache.put(cacheKey, res.clone()));
+      return res;
     }
 
     // Spiel-Detail (Aufstellung, Statistik, Events) — Edge-gecacht
@@ -393,9 +428,11 @@ export default {
       } else {
         const base = await fetchBase(env);
         let ovMap = null;
-        if (env.API_FOOTBALL_KEY) {
+        // API-Football nur, wenn explizit aktiviert (Free-Plan hat keinen 2026-Zugriff →
+        // sonst nur verschwendetes Kontingent). Mit bezahltem Plan: AF_ENABLE="true".
+        if (env.API_FOOTBALL_KEY && env.AF_ENABLE === 'true') {
           try { ovMap = await fetchFixtures(env); }
-          catch (e) { console.warn('Fixture-Zuordnung übersprungen:', e.message); } // Basis bleibt nutzbar
+          catch (e) { console.warn('Fixture-Zuordnung übersprungen:', e.message); }
         }
         payload = merge(base, ovMap);
         try { payload.scorers = await fetchScorers(env); }

@@ -1644,7 +1644,7 @@ function sectionBadges(snap) {
 }
 
 /* ===================== SCREEN: EINSTELLUNGEN ===================== */
-const APP_VERSION = '1.8.2';
+const APP_VERSION = '1.9.0';
 
 /** Segment-Control: Optionen [{v,label}], aktiver Wert val, Aktion action */
 function segmented(action, val, options) {
@@ -1848,321 +1848,67 @@ function startCountdown() {
 function stopCountdown() { if (countdownTimer) { clearInterval(countdownTimer); countdownTimer = null; } }
 
 /* ------------------------------------------------------------------ *
- * 7c) SPIEL-DETAIL-SHEET (Bottom-Sheet)
- * ------------------------------------------------------------------ */
-/* ------------------------------------------------------------------ *
- * 7c) SPIEL-DETAIL — Daten (Aufstellung, Statistik, Verlauf)
+ * 7c) SPIEL-DETAIL-SHEET — nur echte Daten (football-data)
  * ------------------------------------------------------------------ *
- * Live (Worker konfiguriert + fixtureId vorhanden): echte Daten via
- *   GET {apiBase}/api/match?fixture=ID  (Aufstellung mit Spieler-Fotos,
- *   Statistik, Events). Sonst: deterministisch generierte Demo-Daten,
- *   damit die Oberfläche sofort & offline funktioniert.
+ * Free-Plan liefert KEINE Aufstellungen/Statistiken/Tor-Verlauf.
+ * Echt verfügbar & angezeigt: Endstand + Halbzeit, Schiedsrichter,
+ * Stadion, Runde, Datum/Anstoß, Status + Team-News.
  * ------------------------------------------------------------------ */
-function hashStr(s) { let h = 2166136261; for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); } return h >>> 0; }
-function makeRng(seed) { let a = seed >>> 0; return () => { a = a + 0x6D2B79F5 | 0; let x = Math.imul(a ^ a >>> 15, 1 | a); x = x + Math.imul(x ^ x >>> 7, 61 | x) ^ x; return ((x ^ x >>> 14) >>> 0) / 4294967296; }; }
-
-const FIRST_NAMES = ['Leon','Luca','Noah','Marco','Diego','Yusuf','Omar','Ivan','Hugo','Mateo','Liam','Kai','Theo','Adam','Felix','Bruno','Aaron','Nico','Ezra','Samir','Joao','Pedro','Carlos','Andre'];
-const LAST_NAMES  = ['Silva','Müller','Rossi','García','Kovač','Diallo','Hassan','Nowak','Andersen','Tanaka','Lopez','Bauer','Costa','Haidari','Okafor','Pereira','Schmidt','Moreau','Novak','Vidic','Mendez','Yilmaz','Fernandes','Beck'];
-const FORMATIONS  = [[4,3,3],[4,2,3,1],[4,4,2],[3,5,2],[4,1,4,1]];
-
-function teamColor(code) { const h = hashStr('jersey' + (code || '')) % 360; return `hsl(${h} 60% 46%)`; }
-function lastNameOf(n) { const p = n.trim().split(/\s+/); return p[p.length - 1]; }
-function initials(n) { const p = n.trim().split(/\s+/); return ((p[0] || '')[0] || '') + ((p[p.length - 1] || '')[0] || ''); }
-function posLabel(li, nL) { if (li === 0) return t('pos.gk'); if (li === nL - 1) return t('pos.fwd'); if (li === 1) return t('pos.def'); return t('pos.mid'); }
-
-/** Demo-Kader (Startelf + Bank) deterministisch erzeugen */
-function synthSquad(seed) {
-  const rng = makeRng(seed);
-  const formation = FORMATIONS[Math.floor(rng() * FORMATIONS.length)];
-  const lines = [1, ...formation];
-  const usedN = new Set(), usedNum = new Set();
-  const pick = (arr) => arr[Math.floor(rng() * arr.length)];
-  const name = () => { let n, g = 0; do { n = pick(FIRST_NAMES).charAt(0) + '. ' + pick(LAST_NAMES); g++; } while (usedN.has(n) && g < 10); usedN.add(n); return n; };
-  const num = (fixed) => { if (fixed && !usedNum.has(fixed)) { usedNum.add(fixed); return fixed; } let x, g = 0; do { x = 1 + Math.floor(rng() * 30); g++; } while (usedNum.has(x) && g < 50); usedNum.add(x); return x; };
-  const startXI = [];
-  lines.forEach((count, li) => { for (let j = 0; j < count; j++) startXI.push({ num: num(li === 0 ? 1 : 0), name: name(), pos: posLabel(li, lines.length), li, j, count }); });
-  const subs = []; for (let i = 0; i < 7; i++) subs.push({ num: num(0), name: name(), pos: i === 0 ? t('pos.gk') : '' });
-  return { formation: formation.join('-'), coach: pick(FIRST_NAMES).charAt(0) + '. ' + pick(LAST_NAMES), startXI, subs, lines };
-}
-
-function synthStats(m, seed) {
-  const rng = makeRng(seed ^ 0x9e3779b9);
-  const gh = m.score.home || 0, ga = m.score.away || 0;
-  const cl = (v, lo, hi) => Math.max(lo, Math.min(hi, Math.round(v)));
-  const posH = cl(50 + (gh - ga) * 3 + (rng() * 16 - 8), 32, 68);
-  const mk = (base, span, bias) => cl(base + rng() * span + bias, 0, 99);
-  const shotsH = mk(9, 9, gh * 1.5), shotsA = mk(9, 9, ga * 1.5);
-  return {
-    home: { possession: posH, shots: shotsH, shotsOn: cl(Math.max(gh, shotsH * (0.3 + rng() * 0.2)), gh, shotsH), passes: cl(posH * 8 + rng() * 80, 0, 900), passAcc: mk(80, 12, 0), corners: mk(3, 7, 0), fouls: mk(7, 9, 0), yellow: mk(1, 3, 0), offsides: mk(1, 4, 0), saves: mk(2, 4, ga) },
-    away: { possession: 100 - posH, shots: shotsA, shotsOn: cl(Math.max(ga, shotsA * (0.3 + rng() * 0.2)), ga, shotsA), passes: cl((100 - posH) * 8 + rng() * 80, 0, 900), passAcc: mk(80, 12, 0), corners: mk(3, 7, 0), fouls: mk(7, 9, 0), yellow: mk(1, 3, 0), offsides: mk(1, 4, 0), saves: mk(2, 4, gh) },
-  };
-}
-
-function synthEvents(m, seed, home, away) {
-  if (!isPlayed(m)) return [];
-  const rng = makeRng(seed ^ 0x12345);
-  const cap = m.status === 'IN_PLAY' && m.minute ? m.minute : 90;
-  const evs = [];
-  const addGoals = (side, n, xi) => {
-    for (let i = 0; i < n; i++) {
-      const scorer = xi[3 + Math.floor(rng() * (xi.length - 3))] || xi[xi.length - 1];
-      evs.push({ minute: 1 + Math.floor(rng() * cap), type: rng() < 0.12 ? 'penalty' : 'goal', side, player: scorer.name });
-    }
-  };
-  addGoals('home', m.score.home || 0, home.startXI);
-  addGoals('away', m.score.away || 0, away.startXI);
-  const cards = Math.floor(rng() * 4);
-  for (let i = 0; i < cards; i++) {
-    const side = rng() < 0.5 ? 'home' : 'away';
-    const xi = (side === 'home' ? home : away).startXI;
-    evs.push({ minute: 1 + Math.floor(rng() * cap), type: rng() < 0.12 ? 'red' : 'yellow', side, player: xi[Math.floor(rng() * xi.length)].name });
-  }
-  return evs.sort((x, y) => x.minute - y.minute);
-}
-
-function buildMatchDetail(m) {
-  const home = synthSquad(hashStr(m.id + '|H|' + m.home));
-  const away = synthSquad(hashStr(m.id + '|A|' + m.away));
-  return {
-    lineups: { home, away },
-    stats: isPlayed(m) ? synthStats(m, hashStr(m.id)) : null,
-    events: synthEvents(m, hashStr(m.id), home, away),
-    predicted: !isPlayed(m),
-    demo: true,
-  };
-}
-
-const currentDetail = (m) => m._detail || (m._detail = buildMatchDetail(m));
-
-/** Im Live-Betrieb echte Details vom Worker nachladen (ersetzt Demo) */
-async function upgradeDetail(m) {
-  if (!(CONFIG.apiBase && m.fixtureId)) return false;
-  if (m._detail && !m._detail.demo) return false;
-  try {
-    const r = await fetch(`${CONFIG.apiBase}/api/match?fixture=${encodeURIComponent(m.fixtureId)}`);
-    if (!r.ok) return false;
-    const d = await r.json();
-    if (d && d.lineups) { m._detail = { predicted: !isPlayed(m), ...d, demo: false }; return true; }
-  } catch {}
-  return false;
-}
-
-/* ------------------------------------------------------------------ *
- * 7d) SPIEL-DETAIL — Rendering
- * ------------------------------------------------------------------ */
-window.avatarErr = (img) => {
-  const s = document.createElement('span');
-  s.className = img.className.replace('object-cover', '') + ' grid place-items-center font-bold text-white';
-  s.style.cssText = img.style.cssText.replace(/box-shadow[^;]*;?/, '') + `background:${img.dataset.color};box-shadow:0 0 0 2px rgba(255,255,255,.25);font-size:${Math.round(parseInt(img.style.width) * 0.34)}px`;
-  s.textContent = img.dataset.ini;
-  img.replaceWith(s);
-};
-
-function avatarHTML(p, color, size) {
-  const s = size || 38, ini = initials(p.name).toUpperCase();
-  if (p.photo) {
-    return `<img src="${p.photo}" alt="" loading="lazy" data-ini="${ini}" data-color="${color}"
-      class="rounded-full object-cover" style="width:${s}px;height:${s}px;background:${color};box-shadow:0 0 0 2px rgba(255,255,255,.6)" onerror="avatarErr(this)">`;
-  }
-  return `<span class="rounded-full grid place-items-center font-bold text-white"
-    style="width:${s}px;height:${s}px;background:${color};box-shadow:0 0 0 2px rgba(255,255,255,.25);font-size:${Math.round(s * 0.34)}px">${ini}</span>`;
-}
-
-/** Fußball-Trikot mit Rückennummer (statt runder Bubble) */
-function jersey(color, number, size) {
-  const s = size || 38;
-  return `<span class="relative inline-block" style="width:${s}px;height:${s}px">
-    <svg viewBox="0 0 48 48" width="${s}" height="${s}" style="display:block;filter:drop-shadow(0 1px 2px rgba(0,0,0,.45))">
-      <path d="M16 4 L8 8 L3 18 L11 22 L13 16 L13 44 L35 44 L35 16 L37 22 L45 18 L40 8 L32 4 C29 9 19 9 16 4 Z"
-            fill="${color}" stroke="rgba(255,255,255,.7)" stroke-width="1.5" stroke-linejoin="round"/>
-    </svg>
-    <span class="absolute inset-x-0 font-extrabold text-white text-center" style="bottom:${Math.round(s * 0.1)}px;font-size:${Math.round(s * 0.38)}px;text-shadow:0 1px 2px rgba(0,0,0,.5)">${number}</span>
-  </span>`;
-}
-
-function pitchChip(p, xPct, yPct, color) {
-  return `<div class="absolute flex flex-col items-center" style="left:${xPct.toFixed(1)}%;top:${yPct.toFixed(1)}%;transform:translate(-50%,-50%);width:66px">
-    ${jersey(color, p.num, 38)}
-    <span class="mt-0.5 text-[11px] font-semibold text-white leading-tight text-center truncate w-[64px]" style="text-shadow:0 1px 3px rgba(0,0,0,.9)">${lastNameOf(p.name)}</span>
-  </div>`;
-}
-
-function placeXI(xi, lines, isHome, color) {
-  // Jede Mannschaft nutzt ~36 % der Höhe → klarer Abstand an der Mittellinie (kein Überlappen)
-  const nL = lines.length, span = nL > 1 ? 0.36 / (nL - 1) : 0;
-  return xi.map((p) => {
-    const y = isHome ? (0.95 - p.li * span) : (0.05 + p.li * span);
-    // Volle Reihen nach außen ziehen, aber maßvoll (Mischung aus eng & weit)
-    const m = p.count >= 5 ? 0.12 : p.count === 4 ? 0.16 : 0.20;
-    const x = p.count <= 1 ? 0.5 : m + (p.j / (p.count - 1)) * (1 - 2 * m);
-    return pitchChip(p, x * 100, y * 100, color);
-  }).join('');
-}
-
-function benchRow(label, squad, color) {
-  const chips = squad.subs.map((p) => `
-    <div class="flex flex-col items-center shrink-0 w-[52px]">
-      <div class="relative">${avatarHTML(p, color, 32)}
-        <span class="absolute -bottom-1 -right-1 text-[8px] font-bold text-white rounded-full px-1 min-w-[13px] text-center" style="background:rgba(0,0,0,.6)">${p.num}</span>
-      </div>
-      <span class="mt-1 text-[9px] font-medium leading-none text-center truncate w-[50px]">${lastNameOf(p.name)}</span>
-    </div>`).join('');
-  return `<div class="mt-3">
-    <p class="text-[11px] font-bold uppercase tracking-wide text-ink-900/45 dark:text-ink-50/45 mb-2">${label}</p>
-    <div class="flex gap-2 overflow-x-auto -mx-1 px-1 pb-1">${chips}</div>
-  </div>`;
-}
-
-function renderLineupTab(m, detail) {
-  if (!detail.lineups) return `<p class="text-center text-[13px] text-ink-900/45 dark:text-ink-50/45 py-8">${t('md.noLineup')}</p>`;
-  const h = team(m.home), a = team(m.away);
-  const hc = teamColor(h.code), ac = teamColor(a.code);
-  const H = detail.lineups.home, A = detail.lineups.away;
-
-  return `
-    ${detail.predicted ? `<p class="text-[11px] font-semibold text-wm-gold text-center mb-2">${t('md.probable')}</p>` : ''}
-    <div class="flex items-center justify-between text-[12px] font-semibold mb-2 px-1">
-      <span class="inline-flex items-center gap-1.5">${crest(h, 'crest-sm')} ${H.formation}</span>
-      <span class="inline-flex items-center gap-1.5">${A.formation} ${crest(a, 'crest-sm')}</span>
-    </div>
-    <div class="relative rounded-2xl overflow-hidden" style="height:620px;background:linear-gradient(180deg,#15803d,#166534 50%,#15803d)">
-      <!-- Spielfeld-Markierungen -->
-      <div class="absolute inset-2 rounded-xl" style="border:2px solid rgba(255,255,255,.18)"></div>
-      <div class="absolute left-2 right-2" style="top:50%;height:0;border-top:2px solid rgba(255,255,255,.18)"></div>
-      <div class="absolute rounded-full" style="left:50%;top:50%;width:84px;height:84px;transform:translate(-50%,-50%);border:2px solid rgba(255,255,255,.18)"></div>
-      <div class="absolute" style="left:50%;top:50%;width:6px;height:6px;transform:translate(-50%,-50%);background:rgba(255,255,255,.35);border-radius:9999px"></div>
-      <div class="absolute" style="left:28%;right:28%;top:-2px;height:46px;border:2px solid rgba(255,255,255,.16);border-top:none;border-radius:0 0 8px 8px"></div>
-      <div class="absolute" style="left:28%;right:28%;bottom:-2px;height:46px;border:2px solid rgba(255,255,255,.16);border-bottom:none;border-radius:8px 8px 0 0"></div>
-      ${placeXI(A.startXI, A.lines, false, ac)}
-      ${placeXI(H.startXI, H.lines, true, hc)}
-    </div>
-    <div class="flex items-center justify-between text-[11px] text-ink-900/55 dark:text-ink-50/55 mt-3 px-1">
-      <span>👔 ${t('md.coach')}: <b>${H.coach}</b></span>
-      <span><b>${A.coach}</b> :${t('md.coach')} 👔</span>
-    </div>
-    ${benchRow(`${t('md.bench')} · ${h.name}`, H, hc)}
-    ${benchRow(`${t('md.bench')} · ${a.name}`, A, ac)}
-    ${detail.demo ? `<p class="text-[10px] text-ink-900/35 dark:text-ink-50/35 text-center mt-4">${t('md.demo')}</p>` : ''}`;
-}
-
-function statBar(label, hv, av, suffix) {
-  const total = (hv + av) || 1, hp = (hv / total) * 100;
-  const sfx = suffix || '';
-  return `<div class="py-2.5">
-    <div class="flex items-center justify-between text-[13px] font-semibold tabular-nums mb-1.5">
-      <span>${hv}${sfx}</span><span class="text-[11px] font-medium text-ink-900/50 dark:text-ink-50/50">${label}</span><span>${av}${sfx}</span>
-    </div>
-    <div class="flex h-2 rounded-full overflow-hidden bg-black/[0.06] dark:bg-white/[0.08]">
-      <div class="h-full" style="width:${hp.toFixed(1)}%;background:#10B981"></div>
-      <div class="h-full flex-1" style="background:#0A84FF"></div>
-    </div>
-  </div>`;
-}
-
-function renderStatsTab(m, detail) {
-  if (!detail.stats) return `<p class="text-center text-[13px] text-ink-900/45 dark:text-ink-50/45 py-8">${t('md.noStats')}</p>`;
-  const h = team(m.home), a = team(m.away), S = detail.stats;
-  const rows = [
-    ['st.possession', S.home.possession, S.away.possession, '%'],
-    ['st.shots', S.home.shots, S.away.shots, ''],
-    ['st.shotsOn', S.home.shotsOn, S.away.shotsOn, ''],
-    ['st.passes', S.home.passes, S.away.passes, ''],
-    ['st.passAcc', S.home.passAcc, S.away.passAcc, '%'],
-    ['st.corners', S.home.corners, S.away.corners, ''],
-    ['st.fouls', S.home.fouls, S.away.fouls, ''],
-    ['st.offsides', S.home.offsides, S.away.offsides, ''],
-    ['st.yellow', S.home.yellow, S.away.yellow, ''],
-    ['st.saves', S.home.saves, S.away.saves, ''],
-  ];
-  return `
-    <div class="flex items-center justify-between text-[12px] font-bold mb-2 px-1">
-      <span class="inline-flex items-center gap-1.5">${crest(h, 'crest-sm')} ${h.name}</span>
-      <span class="inline-flex items-center gap-1.5">${a.name} ${crest(a, 'crest-sm')}</span>
-    </div>
-    <div class="rounded-xl2 glass-card px-4 divide-y divide-black/5 dark:divide-white/10">
-      ${rows.map((r) => statBar(t(r[0]), r[1], r[2], r[3])).join('')}
-    </div>
-    ${detail.demo ? `<p class="text-[10px] text-ink-900/35 dark:text-ink-50/35 text-center mt-3">${t('md.demo')}</p>` : ''}`;
-}
-
-const EV_ICON = { goal: '⚽️', penalty: '⚽️', owngoal: '🥅', yellow: '🟨', red: '🟥', subst: '🔁' };
-
-function renderEventsTab(m, detail) {
-  if (!detail.events || !detail.events.length) return `<p class="text-center text-[13px] text-ink-900/45 dark:text-ink-50/45 py-8">${t('md.noEvents')}</p>`;
-  const rows = detail.events.map((e) => {
-    const home = e.side === 'home';
-    const typeLabel = t('ev.' + e.type);
-    const cell = `
-      <div class="flex items-center gap-2 ${home ? '' : 'flex-row-reverse text-right'}">
-        <span class="text-base leading-none">${EV_ICON[e.type] || '•'}</span>
-        <div class="min-w-0">
-          <p class="text-[13px] font-semibold truncate">${e.player}</p>
-          <p class="text-[10px] text-ink-900/45 dark:text-ink-50/45">${typeLabel}</p>
-        </div>
-      </div>`;
-    return `<div class="flex items-center gap-2 py-2">
-      <div class="flex-1 min-w-0">${home ? cell : ''}</div>
-      <span class="shrink-0 text-[11px] font-bold tabular-nums px-2 py-0.5 rounded-full bg-black/5 dark:bg-white/10">${e.minute}'</span>
-      <div class="flex-1 min-w-0">${home ? '' : cell}</div>
-    </div>`;
-  }).join('<div class="h-px bg-black/5 dark:bg-white/10"></div>');
-  return `<div class="rounded-xl2 glass-card px-3">${rows}</div>
-    ${detail.demo ? `<p class="text-[10px] text-ink-900/35 dark:text-ink-50/35 text-center mt-3">${t('md.demo')}</p>` : ''}`;
-}
-
-function renderInfoTab(m) {
-  const live = m.status === 'IN_PLAY', played = isPlayed(m), d = new Date(m.utcDate), en = getLang() === 'en';
-  const stageLabel = (KO_STAGES.find(([k]) => k === m.stage) || [])[1] || (m.group && m.group !== '–' ? `${en ? 'Group' : 'Gruppe'} ${m.group}` : 'WM 2026');
-  const info = (label, val) => `<div class="flex items-center justify-between py-3"><span class="text-[13px] text-ink-900/50 dark:text-ink-50/50">${label}</span><span class="text-[14px] font-semibold text-right">${val}</span></div>`;
-  const locale = en ? 'en-GB' : 'de-DE';
-  // Team-News (lädt asynchron via loadMatchNews): undefined/null = lädt, []=keine, [..]=anzeigen
-  let news = '';
-  if (CONFIG.apiBase) {
-    if (m._news === undefined || m._news === null) {
-      news = `<div class="mt-4">${sectionTitle('📰 ' + t('sec.news'))}
-        <div class="rounded-xl2 glass-card overflow-hidden"><div class="skeleton" style="height:64px"></div></div></div>`;
-    } else if (m._news.length) {
-      news = `<div class="mt-4">${sectionTitle('📰 ' + t('sec.news'))}
-        <div class="rounded-xl2 glass-card overflow-hidden">${newsRows(m._news)}</div></div>`;
-    }
-  }
-  return `<div class="rounded-xl2 glass-card px-4 divide-y divide-black/5 dark:divide-white/10">
-    ${info(en ? 'Competition' : 'Wettbewerb', 'FIFA WM 2026')}
-    ${info(en ? 'Round' : 'Runde', stageLabel)}
-    ${info(en ? 'Date' : 'Datum', d.toLocaleDateString(locale, { weekday: 'long', day: '2-digit', month: 'long' }))}
-    ${info(en ? 'Kick-off' : 'Anstoß', fmtTime(m.utcDate) + (en ? '' : ' Uhr'))}
-    ${m.venue ? info(en ? 'Stadium' : 'Stadion', m.venue) : ''}
-    ${info('Status', live ? `${en ? 'Live' : 'Läuft'} – ${liveMinute(m)}` : (played ? (en ? 'Finished' : 'Beendet') : (en ? 'Not started' : 'Noch nicht angepfiffen')))}
-  </div>${news}`;
-}
-
 let currentSheetMatch = null;
-let matchSheetTab = 'stats';
+
+/** Echte Zusatzinfos (Halbzeit, Schiri, Stadion) vom Worker nachladen */
+async function loadMatchInfo(m) {
+  if (m._info !== undefined) return;
+  m._info = null;
+  if (!CONFIG.apiBase) { m._info = {}; return; }
+  try {
+    const r = await fetch(`${CONFIG.apiBase}/api/matchinfo?id=${encodeURIComponent(m.id)}`);
+    m._info = r.ok ? await r.json() : {};
+  } catch { m._info = {}; }
+  if (currentSheetMatch === m) renderSheetContent();
+}
 
 function renderSheetContent() {
   const m = currentSheetMatch;
   const host = document.getElementById('sheet-content');
   if (!m || !host) return;
-  const detail = currentDetail(m);
-  // Aufstellung/Verlauf entfernt (im Free-Plan keine echten Spielerdaten verfügbar)
-  if (matchSheetTab !== 'stats' && matchSheetTab !== 'info') matchSheetTab = 'stats';
-  const tabs = [['stats', 'md.stats'], ['info', 'md.info']];
-  const seg = `<div class="flex gap-1 p-1 rounded-xl bg-black/5 dark:bg-white/10 mb-4 sticky top-0 z-10">
-    ${tabs.map(([k, lk]) => `<button data-action="sheet-tab" data-tab="${k}"
-      class="flex-1 py-2 rounded-lg text-[12px] font-semibold transition press ${k === matchSheetTab
-        ? 'bg-white dark:bg-ink-800 shadow text-ink-900 dark:text-ink-50'
-        : 'text-ink-900/50 dark:text-ink-50/50'}">${t(lk)}</button>`).join('')}
-  </div>`;
-  const panel = matchSheetTab === 'info' ? renderInfoTab(m) : renderStatsTab(m, detail);
-  host.innerHTML = seg + `<div>${panel}</div>`;
-  if (matchSheetTab === 'info') loadMatchNews(m);   // Team-News nachladen
+  const en = getLang() === 'en', live = m.status === 'IN_PLAY', played = isPlayed(m);
+  const d = new Date(m.utcDate), locale = en ? 'en-GB' : 'de-DE';
+  const stageLabel = (KO_STAGES.find(([k]) => k === m.stage) || [])[1] || (m.group && m.group !== '–' ? `${en ? 'Group' : 'Gruppe'} ${m.group}` : 'WM 2026');
+  const info = (label, val) => val ? `<div class="flex items-center justify-between py-3 gap-3"><span class="text-[13px] text-ink-900/50 dark:text-ink-50/50 shrink-0">${label}</span><span class="text-[14px] font-semibold text-right">${val}</span></div>` : '';
+  const inf = m._info || {};
+  const ht = (inf.halfTime && inf.halfTime.home != null) ? `${inf.halfTime.home}:${inf.halfTime.away}` : '';
+  const ref = inf.referee ? esc(inf.referee.name + (inf.referee.nationality ? ` (${inf.referee.nationality})` : '')) : '';
+  const venue = m.venue || inf.venue || '';
+
+  let news = '';
+  if (CONFIG.apiBase) {
+    if (m._news === undefined || m._news === null)
+      news = `<div class="mt-5">${sectionTitle('📰 ' + t('sec.news'))}<div class="rounded-xl2 glass-card overflow-hidden"><div class="skeleton" style="height:64px"></div></div></div>`;
+    else if (m._news.length)
+      news = `<div class="mt-5">${sectionTitle('📰 ' + t('sec.news'))}<div class="rounded-xl2 glass-card overflow-hidden">${newsRows(m._news)}</div></div>`;
+  }
+
+  host.innerHTML = `
+    <div class="rounded-xl2 glass-card px-4 divide-y divide-black/5 dark:divide-white/10">
+      ${info(en ? 'Competition' : 'Wettbewerb', 'FIFA WM 2026')}
+      ${info(en ? 'Round' : 'Runde', stageLabel)}
+      ${info(en ? 'Date' : 'Datum', d.toLocaleDateString(locale, { weekday: 'long', day: '2-digit', month: 'long' }))}
+      ${info(en ? 'Kick-off' : 'Anstoß', fmtTime(m.utcDate) + (en ? '' : ' Uhr'))}
+      ${played ? info(en ? 'Half-time' : 'Halbzeit', ht) : ''}
+      ${info(en ? 'Stadium' : 'Stadion', venue ? esc(venue) : '')}
+      ${info(en ? 'Referee' : 'Schiedsrichter', ref)}
+      ${info('Status', live ? `${en ? 'Live' : 'Läuft'} – ${liveMinute(m)}` : (played ? (en ? 'Finished' : 'Beendet') : (en ? 'Not started' : 'Noch nicht angepfiffen')))}
+    </div>${news}`;
+
+  loadMatchInfo(m);
+  loadMatchNews(m);
 }
 
 function openMatchSheet(id) {
   const m = state.data.matches.find((x) => x.id === id);
   if (!m) return;
   currentSheetMatch = m;
-  matchSheetTab = 'stats';
   const h = team(m.home), a = team(m.away);
   const live = m.status === 'IN_PLAY', played = isPlayed(m), en = getLang() === 'en';
 
@@ -2193,11 +1939,7 @@ function openMatchSheet(id) {
   renderSheetContent();
   makeSheetDraggable(sheet, closeSheet);
   if (navigator.vibrate) navigator.vibrate(8);
-
-  // Live: echte Aufstellungen/Statistiken nachladen und Inhalt aktualisieren
-  upgradeDetail(m).then((ok) => { if (ok && currentSheetMatch === m && document.getElementById('sheet-content')) renderSheetContent(); });
 }
-
 function closeSheet() {
   currentSheetMatch = null;   // Cleanup zuerst (auch wenn das Sheet per Drag schon weg ist)
   const s = document.getElementById('match-sheet');
@@ -2468,11 +2210,6 @@ document.addEventListener('click', (e) => {
 
     case 'close-sheet':
       closeSheet();
-      break;
-
-    case 'sheet-tab':
-      matchSheetTab = el.dataset.tab;
-      renderSheetContent();
       break;
 
     case 'install':
