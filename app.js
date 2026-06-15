@@ -503,9 +503,9 @@ function countdownCard(next) {
           <p class="text-[11px] font-bold tracking-widest uppercase text-wm-lime mb-3">Nächstes Spiel · in</p>
           <div id="countdown" data-target="${+new Date(next.utcDate)}" class="cd-num text-[38px] leading-none mb-4">––:––:––</div>
           <div class="flex items-center justify-center gap-3">
-            <div class="flex items-center gap-2.5 flex-1 justify-end min-w-0"><span class="text-[14px] font-semibold truncate">${team(next.home).name}</span><div class="w-12 h-12 rounded-full grid place-items-center glass-chip">${crest(team(next.home), 'crest-md')}</div></div>
+            <div class="flex items-center gap-2.5 flex-1 justify-end min-w-0"><span class="text-[14px] font-semibold truncate">${team(next.home).name}</span><div class="w-12 h-12 shrink-0 rounded-full grid place-items-center glass-chip">${crest(team(next.home), 'crest-md')}</div></div>
             <span class="text-[13px] font-bold text-white/50">vs</span>
-            <div class="flex items-center gap-2.5 flex-1 min-w-0"><div class="w-12 h-12 rounded-full grid place-items-center glass-chip">${crest(team(next.away), 'crest-md')}</div><span class="text-[14px] font-semibold truncate">${team(next.away).name}</span></div>
+            <div class="flex items-center gap-2.5 flex-1 min-w-0"><div class="w-12 h-12 shrink-0 rounded-full grid place-items-center glass-chip">${crest(team(next.away), 'crest-md')}</div><span class="text-[14px] font-semibold truncate">${team(next.away).name}</span></div>
           </div>
           <p class="text-center text-[11px] text-white/55 mt-4">${fmtKickoff(next.utcDate)} Uhr · Gruppe ${next.group}</p>
         </div>
@@ -569,7 +569,7 @@ function heroCard(m) {
   const center = played
     ? `<div class="score text-[46px] leading-none">${m.score.home}<span class="opacity-40 mx-2">:</span>${m.score.away}</div>`
     : `<div class="text-3xl font-extrabold text-white/85">VS</div>`;
-  const crestGlass = (t) => `<div class="w-16 h-16 rounded-full grid place-items-center glass-chip">${crest(t, 'crest-lg')}</div>`;
+  const crestGlass = (t) => `<div class="w-16 h-16 shrink-0 rounded-full grid place-items-center glass-chip">${crest(t, 'crest-lg')}</div>`;
 
   return `
     <button data-action="open-match" data-id="${m.id}" class="press hero-spot block w-full text-left pitch-grad rounded-xl3 p-6 text-white shadow-card relative overflow-hidden">
