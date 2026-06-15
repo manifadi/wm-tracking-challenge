@@ -1644,7 +1644,7 @@ function sectionBadges(snap) {
 }
 
 /* ===================== SCREEN: EINSTELLUNGEN ===================== */
-const APP_VERSION = '1.8.1';
+const APP_VERSION = '1.8.2';
 
 /** Segment-Control: Optionen [{v,label}], aktiver Wert val, Aktion action */
 function segmented(action, val, options) {
