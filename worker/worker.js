@@ -237,13 +237,20 @@ async function espnGet(path, ttl) {
   return r.json();
 }
 
-/* Team-Namen tolerant vergleichen (football-data ↔ ESPN) */
-const ESPN_ALIAS = { korearepublic: 'southkorea', irancfir: 'iran', china: 'chinapr', usa: 'unitedstates', czechia: 'czechrepublic' };
+/* Team-Namen robust vergleichen (football-data ↔ ESPN): akzent-/füllwort-tolerant.
+ * Empirisch gegen alle 48 WM-Teams geprüft → einzige echte Differenz: Türkiye/Turkey. */
+const TEAM_ALIAS = { turkey: 'turkiye', caboverde: 'capeverde', southkorea: 'korea', korearepublic: 'korea', ivorycoast: 'cotedivoire', usa: 'unitedstates', chinapr: 'china', iranir: 'iran' };
+function teamKey(s) {
+  const drop = new Set(['and', 'the', 'of', 'republic', 'islands', 'island', 'dr', 'ir', 'pr', 'rep', 'st']);
+  let k = String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
+    .split(/[^a-z]+/).filter((w) => w && !drop.has(w)).join('');
+  return TEAM_ALIAS[k] || k;
+}
 function nameMatch(a, b) {
-  let na = norm(a), nb = norm(b);
-  na = ESPN_ALIAS[na] || na; nb = ESPN_ALIAS[nb] || nb;
-  if (na === nb) return true;
-  if (na.length >= 4 && nb.length >= 4 && (na.includes(nb) || nb.includes(na))) return true;
+  const ka = teamKey(a), kb = teamKey(b);
+  if (!ka || !kb) return false;
+  if (ka === kb) return true;
+  if (ka.length >= 4 && kb.length >= 4 && (ka.includes(kb) || kb.includes(ka))) return true;
   return false;
 }
 
@@ -267,11 +274,11 @@ function espnPickStat(list, name) {
   return v;
 }
 
-/* Live-Scoring von ESPN (Minute + Live-Stand + espnId) für heutige Spiele */
+/* ESPN-Scoreboard fürs ganze Turnier (eine Abfrage): espnId für JEDE Partie +
+ * Live-Minute/-Stand für laufende. So bekommt jedes Spiel die richtige Quelle. */
+const ESPN_RANGE = '20260611-20260719';   // WM 2026 Zeitraum
 async function espnLive() {
-  const now = new Date();
-  const ymd = `${now.getUTCFullYear()}${String(now.getUTCMonth() + 1).padStart(2, '0')}${String(now.getUTCDate()).padStart(2, '0')}`;
-  const d = await espnGet(`/scoreboard?dates=${ymd}`, 30);
+  const d = await espnGet(`/scoreboard?dates=${ESPN_RANGE}&limit=200`, 45);
   return (d.events || []).map((e) => {
     const c = (e.competitions || [])[0] || {}; const st = c.status || {};
     const comp = c.competitors || [];
