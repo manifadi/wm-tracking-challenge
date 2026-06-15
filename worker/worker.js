@@ -224,6 +224,123 @@ async function fetchMatchInfo(env, id) {
   };
 }
 
+/* =====================================================================
+ * QUELLE 6 — ESPN (öffentliche JSON-API, kein Key) → ECHTE Aufstellungen,
+ * Statistiken & Tor-/Karten-/Wechsel-Verlauf für WM 2026.
+ * ===================================================================== */
+const ESPN_BASE = 'https://site.api.espn.com/apis/site/v2/sports/soccer/fifa.world';
+const ESPN_UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124 Safari/537.36';
+
+async function espnGet(path, ttl) {
+  const r = await fetch(ESPN_BASE + path, { headers: { 'User-Agent': ESPN_UA, 'Accept': 'application/json' }, cf: { cacheTtl: ttl || 120 } });
+  if (!r.ok) throw new Error(`espn ${r.status}`);
+  return r.json();
+}
+
+/* Team-Namen tolerant vergleichen (football-data ↔ ESPN) */
+const ESPN_ALIAS = { korearepublic: 'southkorea', irancfir: 'iran', china: 'chinapr', usa: 'unitedstates', czechia: 'czechrepublic' };
+function nameMatch(a, b) {
+  let na = norm(a), nb = norm(b);
+  na = ESPN_ALIAS[na] || na; nb = ESPN_ALIAS[nb] || nb;
+  if (na === nb) return true;
+  if (na.length >= 4 && nb.length >= 4 && (na.includes(nb) || nb.includes(na))) return true;
+  return false;
+}
+
+/** ESPN-Event per Datum + Teamnamen finden */
+async function espnFindEvent(home, away, date) {
+  const d = await espnGet(`/scoreboard?dates=${date}`, 120);
+  for (const e of d.events || []) {
+    const comps = (e.competitions && e.competitions[0] && e.competitions[0].competitors) || [];
+    const h = (comps.find((c) => c.homeAway === 'home') || {}).team || {};
+    const a = (comps.find((c) => c.homeAway === 'away') || {}).team || {};
+    const hn = h.displayName || h.name || '', an = a.displayName || a.name || '';
+    if ((nameMatch(hn, home) && nameMatch(an, away)) || (nameMatch(hn, away) && nameMatch(an, home))) return e.id;
+  }
+  return null;
+}
+
+function espnPickStat(list, name) {
+  const s = (list || []).find((x) => x.name === name);
+  if (!s) return null;
+  const v = s.displayValue != null ? s.displayValue : s.value;
+  return v;
+}
+
+function espnLineup(r) {
+  const formation = r.formation || '';
+  const sizes = formation.split('-').map((n) => parseInt(n)).filter(Boolean);
+  const lines = sizes.length ? [1, ...sizes] : [];
+  const starters = (r.roster || []).filter((p) => p.starter)
+    .sort((a, b) => (parseInt(a.formationPlace) || 99) - (parseInt(b.formationPlace) || 99));
+  const startXI = [];
+  if (lines.length) {
+    let idx = 0;
+    lines.forEach((cnt, li) => { for (let j = 0; j < cnt && idx < starters.length; j++) { const p = starters[idx++]; startXI.push({ num: p.jersey, name: (p.athlete || {}).displayName || '', pos: (p.position || {}).abbreviation || '', li, j, count: cnt }); } });
+    // Überzählige Starter (falls Formation nicht passt) anhängen
+    while (idx < starters.length) { const p = starters[idx++]; startXI.push({ num: p.jersey, name: (p.athlete || {}).displayName || '', pos: (p.position || {}).abbreviation || '', li: lines.length - 1, j: 0, count: 1 }); }
+  }
+  const subs = (r.roster || []).filter((p) => !p.starter).map((p) => ({ num: p.jersey, name: (p.athlete || {}).displayName || '', pos: (p.position || {}).abbreviation || '' }));
+  return { formation, startXI, subs, lines };
+}
+
+/** ESPN-Summary → unser Detail-Schema (lineups, stats, events) */
+async function fetchEspnDetail(eventId) {
+  const sum = await espnGet(`/summary?event=${eventId}`, 120);
+  const rosters = sum.rosters || [];
+  const rHome = rosters.find((r) => r.homeAway === 'home');
+  const rAway = rosters.find((r) => r.homeAway === 'away');
+  const idSide = {};
+  rosters.forEach((r) => { if (r.team && r.team.id) idSide[r.team.id] = r.homeAway; });
+
+  // Statistiken
+  let stats = null;
+  const bteams = (sum.boxscore && sum.boxscore.teams) || [];
+  const statOf = (side) => {
+    const tb = bteams.find((tb) => idSide[(tb.team || {}).id] === side) || bteams[side === 'home' ? 0 : 1];
+    const L = tb && tb.statistics;
+    const num = (n) => { const v = espnPickStat(L, n); const f = parseFloat(String(v).replace('%', '')); return isNaN(f) ? 0 : Math.round(f); };
+    return { possession: num('possessionPct'), shots: num('totalShots'), shotsOn: num('shotsOnTarget'),
+      fouls: num('foulsCommitted'), yellow: num('yellowCards'), red: num('redCards'),
+      corners: num('wonCorners'), offsides: num('offsides'), saves: num('saves') };
+  };
+  if (bteams.length) stats = { home: statOf('home'), away: statOf('away') };
+
+  // Events (Tore, Karten, Wechsel)
+  const typeMap = (txt) => {
+    const s = (txt || '').toLowerCase();
+    if (s.includes('penalty') && s.includes('goal')) return 'penalty';
+    if (s.includes('own goal')) return 'owngoal';
+    if (s.includes('goal')) return 'goal';
+    if (s.includes('red card')) return 'red';
+    if (s.includes('yellow card')) return 'yellow';
+    if (s.includes('substitution')) return 'subst';
+    return null;
+  };
+  const parsePlayer = (type, text) => {
+    if (!text) return '';
+    let m;
+    if (type === 'subst') { m = text.match(/\.\s*([^.]+?)\s+replaces\s+/i); return m ? m[1].trim() : ''; }
+    if (type === 'yellow' || type === 'red') { m = text.match(/^([^(.]+?)\s*\(/); return m ? m[1].trim() : ''; }
+    m = text.match(/\d\.\s*([^(.]+?)\s*\(/);          // Tor: „… 1, … 0. Scorer (Team) …"
+    return m ? m[1].trim() : '';
+  };
+  const events = (sum.keyEvents || []).map((e) => {
+    const type = typeMap((e.type || {}).text);
+    if (!type) return null;
+    const side = idSide[((e.team || {}).id)] || 'home';
+    const ath = (e.athletesInvolved || [])[0] || {};
+    const player = (ath.displayName && /^[^(]+$/.test(ath.displayName)) ? ath.displayName : parsePlayer(type, e.text);
+    const minute = (e.clock || {}).displayValue || '';
+    return { minute, type, side, player };
+  }).filter(Boolean);
+
+  const lineups = (rHome && rAway && rHome.roster && rHome.roster.length)
+    ? { home: espnLineup(rHome), away: espnLineup(rAway) } : null;
+
+  return { lineups, stats, events, source: 'espn' };
+}
+
 async function fetchMatchDetail(env, fixtureId) {
   const [lineups, stats, events] = await Promise.all([
     afGet(env, `/fixtures/lineups?fixture=${fixtureId}`).catch(() => []),
@@ -346,6 +463,28 @@ export default {
     const url = new URL(request.url);
     if (url.pathname === '/' ) {
       return json({ ok: true, service: 'WM 2026 Lauf-Challenge Proxy', endpoints: ['/api/matches', '/api/matchinfo?id=ID', '/api/news?q=…'] }, 60);
+    }
+
+    // ECHTES Spiel-Detail (Aufstellung, Statistik, Verlauf) via ESPN
+    if (url.pathname === '/api/detail') {
+      const event = url.searchParams.get('event');
+      const home = url.searchParams.get('home');
+      const away = url.searchParams.get('away');
+      const date = url.searchParams.get('date');   // YYYYMMDD
+      const cache = caches.default;
+      const cacheKey = new Request(url.toString());
+      const cached = await cache.match(cacheKey);
+      if (cached) return cached;
+      let payload, ttl = 120;
+      try {
+        let ev = event;
+        if (!ev && home && away && date) ev = await espnFindEvent(home, away, date);
+        if (!ev) { payload = { lineups: null, notFound: true }; ttl = 300; }
+        else payload = await fetchEspnDetail(ev);
+      } catch (e) { console.warn('detail:', e.message); payload = { lineups: null, error: e.message }; ttl = 60; }
+      const res = json(payload, ttl);
+      ctx.waitUntil(cache.put(cacheKey, res.clone()));
+      return res;
     }
 
     // Echte Match-Zusatzinfos (Halbzeit, Schiedsrichter, Stadion) von football-data

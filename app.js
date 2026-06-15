@@ -1644,7 +1644,7 @@ function sectionBadges(snap) {
 }
 
 /* ===================== SCREEN: EINSTELLUNGEN ===================== */
-const APP_VERSION = '1.9.0';
+const APP_VERSION = '1.10.0';
 
 /** Segment-Control: Optionen [{v,label}], aktiver Wert val, Aktion action */
 function segmented(action, val, options) {
@@ -1848,15 +1848,169 @@ function startCountdown() {
 function stopCountdown() { if (countdownTimer) { clearInterval(countdownTimer); countdownTimer = null; } }
 
 /* ------------------------------------------------------------------ *
- * 7c) SPIEL-DETAIL-SHEET — nur echte Daten (football-data)
+ * 7c) SPIEL-DETAIL-SHEET — echte Daten (ESPN + football-data)
  * ------------------------------------------------------------------ *
- * Free-Plan liefert KEINE Aufstellungen/Statistiken/Tor-Verlauf.
- * Echt verfügbar & angezeigt: Endstand + Halbzeit, Schiedsrichter,
- * Stadion, Runde, Datum/Anstoß, Status + Team-News.
+ * Aufstellung/Statistik/Verlauf: ESPN (/api/detail). Halbzeit/Schiri/
+ * Stadion: football-data (/api/matchinfo). Ist (noch) kein Detail da
+ * (z. B. lange vor Anpfiff), zeigt das Sheet nur Info-Felder + News.
  * ------------------------------------------------------------------ */
 let currentSheetMatch = null;
+let matchSheetTab = 'lineup';
 
-/** Echte Zusatzinfos (Halbzeit, Schiri, Stadion) vom Worker nachladen */
+function teamColor(code) { let h = 0; const s = 'j' + (code || ''); for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0; return `hsl(${h % 360} 60% 46%)`; }
+const lastNameOf = (n) => { const p = String(n || '').trim().split(/\s+/); return p[p.length - 1] || ''; };
+
+function jersey(color, number, size) {
+  const s = size || 38;
+  return `<span class="relative inline-block" style="width:${s}px;height:${s}px">
+    <svg viewBox="0 0 48 48" width="${s}" height="${s}" style="display:block;filter:drop-shadow(0 1px 2px rgba(0,0,0,.45))">
+      <path d="M16 4 L8 8 L3 18 L11 22 L13 16 L13 44 L35 44 L35 16 L37 22 L45 18 L40 8 L32 4 C29 9 19 9 16 4 Z" fill="${color}" stroke="rgba(255,255,255,.7)" stroke-width="1.5" stroke-linejoin="round"/>
+    </svg>
+    <span class="absolute inset-x-0 font-extrabold text-white text-center" style="bottom:${Math.round(s * 0.1)}px;font-size:${Math.round(s * 0.38)}px;text-shadow:0 1px 2px rgba(0,0,0,.5)">${esc(number)}</span>
+  </span>`;
+}
+function pitchChip(p, xPct, yPct, color) {
+  return `<div class="absolute flex flex-col items-center" style="left:${xPct.toFixed(1)}%;top:${yPct.toFixed(1)}%;transform:translate(-50%,-50%);width:66px">
+    ${jersey(color, p.num, 38)}
+    <span class="mt-0.5 text-[11px] font-semibold text-white leading-tight text-center truncate w-[64px]" style="text-shadow:0 1px 3px rgba(0,0,0,.9)">${esc(lastNameOf(p.name))}</span>
+  </div>`;
+}
+function placeXI(xi, lines, isHome, color) {
+  const nL = lines.length, span = nL > 1 ? 0.36 / (nL - 1) : 0;
+  return xi.map((p) => {
+    const y = isHome ? (0.95 - p.li * span) : (0.05 + p.li * span);
+    const m = p.count >= 5 ? 0.12 : p.count === 4 ? 0.16 : 0.20;
+    const x = p.count <= 1 ? 0.5 : m + (p.j / (p.count - 1)) * (1 - 2 * m);
+    return pitchChip(p, x * 100, y * 100, color);
+  }).join('');
+}
+function benchRow(label, squad, color) {
+  if (!squad.subs || !squad.subs.length) return '';
+  const chips = squad.subs.map((p) => `
+    <div class="flex flex-col items-center shrink-0 w-[54px]">
+      ${jersey(color, p.num, 30)}
+      <span class="mt-1 text-[9px] font-medium leading-none text-center truncate w-[52px]">${esc(lastNameOf(p.name))}</span>
+    </div>`).join('');
+  return `<div class="mt-3">
+    <p class="text-[11px] font-bold uppercase tracking-wide text-ink-900/45 dark:text-ink-50/45 mb-2">${label}</p>
+    <div class="flex gap-2 overflow-x-auto -mx-1 px-1 pb-1">${chips}</div>
+  </div>`;
+}
+function renderLineupTab(m, detail) {
+  const L = detail.lineups; if (!L || !L.home) return '';
+  const h = team(m.home), a = team(m.away);
+  const hc = teamColor(h.code), ac = teamColor(a.code), H = L.home, A = L.away;
+  return `
+    <div class="flex items-center justify-between text-[12px] font-semibold mb-2 px-1">
+      <span class="inline-flex items-center gap-1.5">${crest(h, 'crest-sm')} ${esc(H.formation)}</span>
+      <span class="inline-flex items-center gap-1.5">${esc(A.formation)} ${crest(a, 'crest-sm')}</span>
+    </div>
+    <div class="relative rounded-2xl overflow-hidden" style="height:620px;background:linear-gradient(180deg,#15803d,#166534 50%,#15803d)">
+      <div class="absolute inset-2 rounded-xl" style="border:2px solid rgba(255,255,255,.18)"></div>
+      <div class="absolute left-2 right-2" style="top:50%;height:0;border-top:2px solid rgba(255,255,255,.18)"></div>
+      <div class="absolute rounded-full" style="left:50%;top:50%;width:84px;height:84px;transform:translate(-50%,-50%);border:2px solid rgba(255,255,255,.18)"></div>
+      ${placeXI(A.startXI, A.lines, false, ac)}
+      ${placeXI(H.startXI, H.lines, true, hc)}
+    </div>
+    ${benchRow(`${t('md.bench')} · ${h.name}`, H, hc)}
+    ${benchRow(`${t('md.bench')} · ${a.name}`, A, ac)}`;
+}
+function statBar(label, hv, av, sfx) {
+  const total = (hv + av) || 1, hp = (hv / total) * 100; sfx = sfx || '';
+  return `<div class="py-2.5">
+    <div class="flex items-center justify-between text-[13px] font-semibold tabular-nums mb-1.5">
+      <span>${hv}${sfx}</span><span class="text-[11px] font-medium text-ink-900/50 dark:text-ink-50/50">${label}</span><span>${av}${sfx}</span>
+    </div>
+    <div class="flex h-2 rounded-full overflow-hidden bg-black/[0.06] dark:bg-white/[0.08]">
+      <div class="h-full" style="width:${hp.toFixed(1)}%;background:#10B981"></div>
+      <div class="h-full flex-1" style="background:#0A84FF"></div>
+    </div>
+  </div>`;
+}
+function renderStatsTab(m, detail) {
+  const S = detail.stats; if (!S) return '';
+  const h = team(m.home), a = team(m.away);
+  const rows = [
+    ['st.possession', S.home.possession, S.away.possession, '%'],
+    ['st.shots', S.home.shots, S.away.shots, ''],
+    ['st.shotsOn', S.home.shotsOn, S.away.shotsOn, ''],
+    ['st.corners', S.home.corners, S.away.corners, ''],
+    ['st.fouls', S.home.fouls, S.away.fouls, ''],
+    ['st.offsides', S.home.offsides, S.away.offsides, ''],
+    ['st.yellow', S.home.yellow, S.away.yellow, ''],
+    ['st.saves', S.home.saves, S.away.saves, ''],
+  ];
+  return `
+    <div class="flex items-center justify-between text-[12px] font-bold mb-2 px-1">
+      <span class="inline-flex items-center gap-1.5">${crest(h, 'crest-sm')} ${h.name}</span>
+      <span class="inline-flex items-center gap-1.5">${a.name} ${crest(a, 'crest-sm')}</span>
+    </div>
+    <div class="rounded-xl2 glass-card px-4 divide-y divide-black/5 dark:divide-white/10">
+      ${rows.map((r) => statBar(t(r[0]), r[1], r[2], r[3])).join('')}
+    </div>`;
+}
+const EV_ICON = { goal: '⚽️', penalty: '⚽️', owngoal: '🥅', yellow: '🟨', red: '🟥', subst: '🔁' };
+function renderEventsTab(m, detail) {
+  const evs = detail.events || []; if (!evs.length) return '';
+  const rows = evs.map((e) => {
+    const homeSide = e.side === 'home';
+    const cell = `<div class="flex items-center gap-2 ${homeSide ? '' : 'flex-row-reverse text-right'}">
+        <span class="text-base leading-none">${EV_ICON[e.type] || '•'}</span>
+        <div class="min-w-0"><p class="text-[13px] font-semibold truncate">${esc(e.player) || t('ev.' + e.type)}</p>
+        <p class="text-[10px] text-ink-900/45 dark:text-ink-50/45">${t('ev.' + e.type)}</p></div></div>`;
+    return `<div class="flex items-center gap-2 py-2">
+      <div class="flex-1 min-w-0">${homeSide ? cell : ''}</div>
+      <span class="shrink-0 text-[11px] font-bold tabular-nums px-2 py-0.5 rounded-full bg-black/5 dark:bg-white/10">${esc(e.minute)}</span>
+      <div class="flex-1 min-w-0">${homeSide ? '' : cell}</div>
+    </div>`;
+  }).join('<div class="h-px bg-black/5 dark:bg-white/10"></div>');
+  return `<div class="rounded-xl2 glass-card px-3">${rows}</div>`;
+}
+
+function renderInfoTab(m) {
+  const en = getLang() === 'en', live = m.status === 'IN_PLAY', played = isPlayed(m);
+  const d = new Date(m.utcDate), locale = en ? 'en-GB' : 'de-DE';
+  const stageLabel = (KO_STAGES.find(([k]) => k === m.stage) || [])[1] || (m.group && m.group !== '–' ? `${en ? 'Group' : 'Gruppe'} ${m.group}` : 'WM 2026');
+  const info = (label, val) => val ? `<div class="flex items-center justify-between py-3 gap-3"><span class="text-[13px] text-ink-900/50 dark:text-ink-50/50 shrink-0">${label}</span><span class="text-[14px] font-semibold text-right">${val}</span></div>` : '';
+  const inf = m._info || {};
+  const ht = (inf.halfTime && inf.halfTime.home != null) ? `${inf.halfTime.home}:${inf.halfTime.away}` : '';
+  const ref = inf.referee ? esc(inf.referee.name + (inf.referee.nationality ? ` (${inf.referee.nationality})` : '')) : '';
+  const venue = m.venue || inf.venue || '';
+  let news = '';
+  if (CONFIG.apiBase) {
+    if (m._news === undefined || m._news === null)
+      news = `<div class="mt-5">${sectionTitle('📰 ' + t('sec.news'))}<div class="rounded-xl2 glass-card overflow-hidden"><div class="skeleton" style="height:64px"></div></div></div>`;
+    else if (m._news.length)
+      news = `<div class="mt-5">${sectionTitle('📰 ' + t('sec.news'))}<div class="rounded-xl2 glass-card overflow-hidden">${newsRows(m._news)}</div></div>`;
+  }
+  return `
+    <div class="rounded-xl2 glass-card px-4 divide-y divide-black/5 dark:divide-white/10">
+      ${info(en ? 'Competition' : 'Wettbewerb', 'FIFA WM 2026')}
+      ${info(en ? 'Round' : 'Runde', stageLabel)}
+      ${info(en ? 'Date' : 'Datum', d.toLocaleDateString(locale, { weekday: 'long', day: '2-digit', month: 'long' }))}
+      ${info(en ? 'Kick-off' : 'Anstoß', fmtTime(m.utcDate) + (en ? '' : ' Uhr'))}
+      ${played ? info(en ? 'Half-time' : 'Halbzeit', ht) : ''}
+      ${info(en ? 'Stadium' : 'Stadion', venue ? esc(venue) : '')}
+      ${info(en ? 'Referee' : 'Schiedsrichter', ref)}
+      ${info('Status', live ? `${en ? 'Live' : 'Läuft'} – ${liveMinute(m)}` : (played ? (en ? 'Finished' : 'Beendet') : (en ? 'Not started' : 'Noch nicht angepfiffen')))}
+    </div>${news}`;
+}
+
+/** Echtes Detail (Aufstellung/Statistik/Verlauf) via ESPN nachladen */
+async function loadDetail(m) {
+  if (m._detail !== undefined) return;
+  m._detail = null;
+  if (!CONFIG.apiBase) { m._detail = {}; return; }
+  const d = new Date(m.utcDate);
+  const ymd = `${d.getUTCFullYear()}${String(d.getUTCMonth() + 1).padStart(2, '0')}${String(d.getUTCDate()).padStart(2, '0')}`;
+  try {
+    const r = await fetch(`${CONFIG.apiBase}/api/detail?home=${encodeURIComponent(team(m.home).name)}&away=${encodeURIComponent(team(m.away).name)}&date=${ymd}`);
+    m._detail = r.ok ? await r.json() : {};
+  } catch { m._detail = {}; }
+  if (currentSheetMatch === m) renderSheetContent();
+}
+
+/** Echte Zusatzinfos (Halbzeit, Schiri, Stadion) von football-data */
 async function loadMatchInfo(m) {
   if (m._info !== undefined) return;
   m._info = null;
@@ -1872,35 +2026,28 @@ function renderSheetContent() {
   const m = currentSheetMatch;
   const host = document.getElementById('sheet-content');
   if (!m || !host) return;
-  const en = getLang() === 'en', live = m.status === 'IN_PLAY', played = isPlayed(m);
-  const d = new Date(m.utcDate), locale = en ? 'en-GB' : 'de-DE';
-  const stageLabel = (KO_STAGES.find(([k]) => k === m.stage) || [])[1] || (m.group && m.group !== '–' ? `${en ? 'Group' : 'Gruppe'} ${m.group}` : 'WM 2026');
-  const info = (label, val) => val ? `<div class="flex items-center justify-between py-3 gap-3"><span class="text-[13px] text-ink-900/50 dark:text-ink-50/50 shrink-0">${label}</span><span class="text-[14px] font-semibold text-right">${val}</span></div>` : '';
-  const inf = m._info || {};
-  const ht = (inf.halfTime && inf.halfTime.home != null) ? `${inf.halfTime.home}:${inf.halfTime.away}` : '';
-  const ref = inf.referee ? esc(inf.referee.name + (inf.referee.nationality ? ` (${inf.referee.nationality})` : '')) : '';
-  const venue = m.venue || inf.venue || '';
+  const det = m._detail;
+  const tabs = [];
+  if (det && det.lineups && det.lineups.home) tabs.push(['lineup', 'md.lineup']);
+  if (det && det.stats) tabs.push(['stats', 'md.stats']);
+  if (det && det.events && det.events.length) tabs.push(['events', 'md.events']);
+  tabs.push(['info', 'md.info']);
+  if (!tabs.some(([k]) => k === matchSheetTab)) matchSheetTab = tabs[0][0];
 
-  let news = '';
-  if (CONFIG.apiBase) {
-    if (m._news === undefined || m._news === null)
-      news = `<div class="mt-5">${sectionTitle('📰 ' + t('sec.news'))}<div class="rounded-xl2 glass-card overflow-hidden"><div class="skeleton" style="height:64px"></div></div></div>`;
-    else if (m._news.length)
-      news = `<div class="mt-5">${sectionTitle('📰 ' + t('sec.news'))}<div class="rounded-xl2 glass-card overflow-hidden">${newsRows(m._news)}</div></div>`;
-  }
+  const seg = tabs.length > 1 ? `<div class="flex gap-1 p-1 rounded-xl bg-black/5 dark:bg-white/10 mb-4">
+    ${tabs.map(([k, lk]) => `<button data-action="sheet-tab" data-tab="${k}"
+      class="flex-1 py-2 rounded-lg text-[12px] font-semibold transition press ${k === matchSheetTab
+        ? 'bg-white dark:bg-ink-800 shadow text-ink-900 dark:text-ink-50' : 'text-ink-900/50 dark:text-ink-50/50'}">${t(lk)}</button>`).join('')}
+  </div>` : '';
 
-  host.innerHTML = `
-    <div class="rounded-xl2 glass-card px-4 divide-y divide-black/5 dark:divide-white/10">
-      ${info(en ? 'Competition' : 'Wettbewerb', 'FIFA WM 2026')}
-      ${info(en ? 'Round' : 'Runde', stageLabel)}
-      ${info(en ? 'Date' : 'Datum', d.toLocaleDateString(locale, { weekday: 'long', day: '2-digit', month: 'long' }))}
-      ${info(en ? 'Kick-off' : 'Anstoß', fmtTime(m.utcDate) + (en ? '' : ' Uhr'))}
-      ${played ? info(en ? 'Half-time' : 'Halbzeit', ht) : ''}
-      ${info(en ? 'Stadium' : 'Stadion', venue ? esc(venue) : '')}
-      ${info(en ? 'Referee' : 'Schiedsrichter', ref)}
-      ${info('Status', live ? `${en ? 'Live' : 'Läuft'} – ${liveMinute(m)}` : (played ? (en ? 'Finished' : 'Beendet') : (en ? 'Not started' : 'Noch nicht angepfiffen')))}
-    </div>${news}`;
+  let panel;
+  if (matchSheetTab === 'lineup') panel = renderLineupTab(m, det);
+  else if (matchSheetTab === 'stats') panel = renderStatsTab(m, det);
+  else if (matchSheetTab === 'events') panel = renderEventsTab(m, det);
+  else panel = renderInfoTab(m);
+  host.innerHTML = seg + `<div>${panel}</div>`;
 
+  loadDetail(m);
   loadMatchInfo(m);
   loadMatchNews(m);
 }
@@ -1909,6 +2056,7 @@ function openMatchSheet(id) {
   const m = state.data.matches.find((x) => x.id === id);
   if (!m) return;
   currentSheetMatch = m;
+  matchSheetTab = 'lineup';
   const h = team(m.home), a = team(m.away);
   const live = m.status === 'IN_PLAY', played = isPlayed(m), en = getLang() === 'en';
 
@@ -2210,6 +2358,11 @@ document.addEventListener('click', (e) => {
 
     case 'close-sheet':
       closeSheet();
+      break;
+
+    case 'sheet-tab':
+      matchSheetTab = el.dataset.tab;
+      renderSheetContent();
       break;
 
     case 'install':
