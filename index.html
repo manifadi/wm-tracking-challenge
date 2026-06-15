@@ -35,22 +35,24 @@
               emerald: '#10B981', // Smaragd (Bild 2)
               plum:    '#7C3AED', // Lila-Akzent Light-Mode (Bild 3)
             },
-            // Flächen: hell (Apple-clean) + dunkel (Pitch-Schwarzgrün)
+            // Flächen: hell (soft premium) + dunkel (edles Charcoal)
             ink: {
-              50:  '#f5f5f7',
-              100: '#e8e8ed',
-              900: '#141b17', // Karten im Dark-Mode (leicht grünstichig)
-              950: '#0a0f0d', // Body im Dark-Mode (Pitch-Schwarzgrün)
+              50:  '#f4f5f7', // Body hell (soft off-white)
+              100: '#eceef1', // Karten-Sekundärflächen hell
+              800: '#1c2128', // erhöhte Flächen Dark
+              900: '#171b21', // Karten im Dark-Mode (edles Charcoal)
+              950: '#0e1115', // Body im Dark-Mode
             }
           },
           fontFamily: {
             sans: ['-apple-system','BlinkMacSystemFont','SF Pro Display','Segoe UI','Roboto','Helvetica','Arial','sans-serif'],
           },
           boxShadow: {
-            card: '0 1px 2px rgba(0,0,0,0.04), 0 8px 24px rgba(0,0,0,0.06)',
-            'card-dark': '0 1px 2px rgba(0,0,0,0.4), 0 8px 24px rgba(0,0,0,0.5)',
+            card: '0 1px 2px rgba(16,24,40,0.03), 0 12px 32px -8px rgba(16,24,40,0.10)',
+            'card-dark': '0 1px 2px rgba(0,0,0,0.5), 0 16px 40px -12px rgba(0,0,0,0.6)',
+            glow: '0 8px 28px -6px rgba(16,185,129,0.45)',
           },
-          borderRadius: { xl2: '1.25rem' }
+          borderRadius: { xl2: '1.5rem', xl3: '1.875rem' }
         }
       }
     }
@@ -135,8 +137,8 @@
     /* ---- Floating Bottom-Nav (Pill, aktiver Tab als Kapsel) ---- */
     .nav-btn { color: rgba(60,60,67,.5); }
     html.dark .nav-btn { color: rgba(235,235,245,.5); }
-    .nav-btn.nav-active { color: #08120c !important; background: linear-gradient(135deg, #B8F23C, #10B981); box-shadow: 0 6px 16px rgba(16,185,129,.35); }
-    .nav-btn.nav-active svg { color: #08120c; }
+    .nav-btn.nav-active { color: #fff !important; background: linear-gradient(135deg, #10B981, #059669); box-shadow: 0 6px 16px rgba(16,185,129,.4); }
+    .nav-btn.nav-active svg { color: #fff; stroke-width: 2; }
 
     /* ---- Pitch-Verlauf für Hero-/Featured-Karten ---- */
     .pitch-grad { background: radial-gradient(120% 120% at 80% 0%, #1f6b3a 0%, #0e3b22 45%, #0a0f0d 100%); }
@@ -144,6 +146,47 @@
 
     /* Score-Typografie */
     .score { font-variant-numeric: tabular-nums; font-weight: 800; letter-spacing: -.02em; }
+
+    /* ====== „Erlebnis"-Schicht: smooothe Mikro-Animationen ====== */
+
+    /* Gestaffeltes Einblenden von Karten (Stagger) */
+    @keyframes rise { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+    .stagger > * { opacity: 0; animation: rise .5s cubic-bezier(.22,1,.36,1) forwards; }
+    .stagger > *:nth-child(1){animation-delay:.02s}  .stagger > *:nth-child(2){animation-delay:.06s}
+    .stagger > *:nth-child(3){animation-delay:.10s}  .stagger > *:nth-child(4){animation-delay:.14s}
+    .stagger > *:nth-child(5){animation-delay:.18s}  .stagger > *:nth-child(6){animation-delay:.22s}
+    .stagger > *:nth-child(7){animation-delay:.26s}  .stagger > *:nth-child(8){animation-delay:.30s}
+    .stagger > *:nth-child(9){animation-delay:.34s}  .stagger > *:nth-child(n+10){animation-delay:.38s}
+
+    /* Weicher Tab-Wechsel des Inhalts */
+    @keyframes tab-in { from { opacity: 0; transform: translateY(8px) scale(.995); } to { opacity: 1; transform: none; } }
+    .tab-enter { animation: tab-in .34s cubic-bezier(.22,1,.36,1); }
+
+    /* Press-Feedback (sanftes Eindrücken) */
+    .press { transition: transform .12s cubic-bezier(.22,1,.36,1); }
+    .press:active { transform: scale(.97); }
+
+    /* Bottom-Sheet (Spiel-Detail) */
+    @keyframes sheet-up { from { transform: translateY(100%); } to { transform: translateY(0); } }
+    @keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
+    .sheet-backdrop { position: fixed; inset: 0; z-index: 80; background: rgba(0,0,0,.45); backdrop-filter: blur(4px); animation: fade-in .25s ease forwards; }
+    .sheet { position: fixed; left: 0; right: 0; bottom: 0; z-index: 81; animation: sheet-up .42s cubic-bezier(.22,1,.36,1); }
+    .sheet-backdrop.closing { animation: fade-in .2s ease reverse forwards; }
+    .sheet.closing { animation: sheet-up .28s cubic-bezier(.4,0,1,1) reverse forwards; }
+    .grabber { width: 38px; height: 5px; border-radius: 999px; background: rgba(120,120,128,.4); margin: 10px auto 4px; }
+
+    /* Skeleton-Shimmer (statt Spinner) */
+    @keyframes shimmer { 100% { transform: translateX(100%); } }
+    .skeleton { position: relative; overflow: hidden; background: rgba(120,120,128,.12); }
+    .skeleton::after { content:''; position:absolute; inset:0; transform: translateX(-100%);
+      background: linear-gradient(90deg, transparent, rgba(255,255,255,.10), transparent); animation: shimmer 1.3s infinite; }
+
+    /* Countdown-Ziffern */
+    .cd-num { font-variant-numeric: tabular-nums; font-weight: 800; letter-spacing: -.02em; }
+
+    @media (prefers-reduced-motion: reduce) {
+      .stagger > *, .tab-enter, .sheet, .sheet-backdrop, .skeleton::after { animation: none !important; opacity: 1 !important; transform: none !important; }
+    }
 </style>
 </head>
 
@@ -153,8 +196,8 @@
   <header class="pt-safe sticky top-0 z-30 backdrop-blur-xl bg-ink-50/80 dark:bg-ink-950/70 border-b border-black/5 dark:border-white/10">
     <div class="max-w-md mx-auto px-5 pb-3 flex items-center justify-between gap-3">
       <div class="flex items-center gap-3 min-w-0">
-        <div class="w-10 h-10 rounded-full grid place-items-center text-lg shrink-0 shadow-card dark:shadow-card-dark"
-             style="background:linear-gradient(135deg,#B8F23C,#10B981)">⚽️</div>
+        <div class="w-10 h-10 rounded-full grid place-items-center text-lg shrink-0 shadow-glow"
+             style="background:linear-gradient(135deg,#10B981,#059669)">⚽️</div>
         <div class="min-w-0">
           <p id="header-greet" class="text-[12px] font-medium text-ink-900/50 dark:text-ink-50/50 leading-tight truncate">Willkommen 👋</p>
           <h1 id="header-title" class="text-[20px] font-bold leading-tight truncate">Live-Ticker</h1>
@@ -175,19 +218,29 @@
     <div class="py-20 text-center text-ink-900/40 dark:text-ink-50/40">Lade WM-Daten…</div>
   </main>
 
-  <!-- ================= BOTTOM NAV (Floating Pill) ================= -->
+  <!-- ================= BOTTOM NAV (Floating Pill, 4 Tabs) ================= -->
   <nav class="fixed bottom-0 inset-x-0 z-40 nav-safe pointer-events-none">
-    <div class="max-w-md mx-auto px-5 pt-2">
-      <div class="pointer-events-auto flex gap-2 p-1.5 rounded-full backdrop-blur-xl bg-white/85 dark:bg-ink-900/85 border border-black/5 dark:border-white/10 shadow-card dark:shadow-card-dark">
-        <button data-action="switch-tab" data-tab="ticker"
-                class="nav-btn flex-1 flex items-center justify-center gap-2 py-2.5 rounded-full transition active:scale-95">
-          <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
-          <span class="text-[13px] font-semibold">Ticker</span>
+    <div class="max-w-md mx-auto px-4 pt-2">
+      <div class="pointer-events-auto flex gap-1 p-1.5 rounded-full backdrop-blur-xl bg-white/85 dark:bg-ink-900/85 border border-black/5 dark:border-white/10 shadow-card dark:shadow-card-dark">
+        <button data-action="switch-tab" data-tab="today" aria-label="Heute"
+                class="nav-btn flex-1 flex flex-col items-center justify-center gap-0.5 py-2 rounded-full press">
+          <svg class="w-[22px] h-[22px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V20h14V9.5"/></svg>
+          <span class="text-[10px] font-semibold">Heute</span>
         </button>
-        <button data-action="switch-tab" data-tab="challenge"
-                class="nav-btn flex-1 flex items-center justify-center gap-2 py-2.5 rounded-full transition active:scale-95">
-          <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M13 4 8 14h4l-1 6 5-10h-4l1-6Z"/></svg>
-          <span class="text-[13px] font-semibold">Challenge</span>
+        <button data-action="switch-tab" data-tab="schedule" aria-label="Spielplan"
+                class="nav-btn flex-1 flex flex-col items-center justify-center gap-0.5 py-2 rounded-full press">
+          <svg class="w-[22px] h-[22px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4.5" width="18" height="16" rx="2.5"/><path d="M3 9h18M8 2.5v4M16 2.5v4"/></svg>
+          <span class="text-[10px] font-semibold">Spielplan</span>
+        </button>
+        <button data-action="switch-tab" data-tab="table" aria-label="Tabelle"
+                class="nav-btn flex-1 flex flex-col items-center justify-center gap-0.5 py-2 rounded-full press">
+          <svg class="w-[22px] h-[22px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 20V10M12 20V4M19 20v-7"/></svg>
+          <span class="text-[10px] font-semibold">Tabelle</span>
+        </button>
+        <button data-action="switch-tab" data-tab="challenge" aria-label="Challenge"
+                class="nav-btn flex-1 flex flex-col items-center justify-center gap-0.5 py-2 rounded-full press">
+          <svg class="w-[22px] h-[22px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="13" cy="4" r="1.6"/><path d="M7 21l3-6 2-3 4 2-2-5"/><path d="M9 9l3.5-2 3 1 2 2"/></svg>
+          <span class="text-[10px] font-semibold">Challenge</span>
         </button>
       </div>
     </div>

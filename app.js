@@ -137,9 +137,11 @@ const MOCK_DATA = {
  *    Der Worker normalisiert bereits auf unser Schema, daher kein Mapping nötig.
  *  - kein apiBase ODER Fehler/Offline → eingebaute Mock-Daten (App bleibt voll funktionsfähig).
  */
+const FORCE_DEMO = (typeof location !== 'undefined') && new URLSearchParams(location.search).get('demo') === '1';
+
 async function fetchMatches() {
-  if (!CONFIG.apiBase) {
-    await new Promise((r) => setTimeout(r, 350));    // simulierte Latenz im Demo-Modus
+  if (!CONFIG.apiBase || FORCE_DEMO) {           // ?demo=1 erzwingt Mock-Daten (offline/Preview)
+    await new Promise((r) => setTimeout(r, 200));
     return structuredClone(MOCK_DATA);
   }
   try {
@@ -186,11 +188,16 @@ function loadRuns() {
   return legacy > 0 ? [{ id: 'legacy', km: legacy, ts: Date.now() }] : [];
 }
 
+const VALID_TABS = ['today', 'schedule', 'table', 'challenge'];
+function loadTab() {
+  const t = load(LS.tab, 'today');
+  return VALID_TABS.includes(t) ? t : 'today';   // alte Werte ('ticker') → Heute
+}
+
 const state = {
   loading:  true,
   data:     null,
-  tab:      load(LS.tab, 'ticker'),
-  tickerView: load(LS.tickerView, 'matches'),
+  tab:      loadTab(),
   runs:     loadRuns(),
   disabled: new Set(load(LS.disabled, [])),   // IDs der Spiele, deren Tore NICHT zählen
   seenBadges: new Set(load(LS.badges, [])),
@@ -201,7 +208,6 @@ function persist() {
   save(LS.badges, [...state.seenBadges]);
   save(LS.disabled, [...state.disabled]);
   save(LS.tab, state.tab);
-  save(LS.tickerView, state.tickerView);
 }
 
 /* ------------------------------------------------------------------ *
@@ -390,90 +396,154 @@ window.crestErr = (img) => {
 /* ------------------------------------------------------------------ *
  * 5) RENDER  ·  SCREEN 1: TICKER
  * ------------------------------------------------------------------ */
-function viewTicker() {
-  const goals = totalGoals();
-  const groups = Object.keys(state.data.groups);
+/** Einzelne, antippbare Spielzeile (öffnet Detail-Sheet) */
+function matchRow(m) {
+  const h = team(m.home), a = team(m.away);
+  const played = isPlayed(m), live = m.status === 'IN_PLAY';
+  const center = played
+    ? `<div class="score text-[20px] ${live ? 'text-wm-red' : ''}">${m.score.home}<span class="opacity-25 mx-1.5">:</span>${m.score.away}</div>`
+    : `<div class="text-[14px] font-bold text-ink-900/55 dark:text-ink-50/55 tabular-nums">${fmtTime(m.utcDate)}</div>`;
+  const sub = live ? `<span class="text-wm-red font-bold">${liveMinute(m)}</span>`
+    : (played ? `<span class="text-ink-900/35 dark:text-ink-50/35">Endstand</span>`
+    : `<span class="text-ink-900/35 dark:text-ink-50/35">${fmtKickoff(m.utcDate).split(',')[0]}</span>`);
+  return `
+    <button data-action="open-match" data-id="${m.id}" class="w-full flex items-center gap-2 px-4 py-3 text-left press">
+      <div class="flex-1 flex items-center justify-end gap-2.5 min-w-0 text-right">
+        <span class="text-[14px] font-semibold truncate">${h.name}</span>${crest(h, 'crest-sm')}
+      </div>
+      <div class="shrink-0 min-w-[68px] text-center">${center}<div class="text-[10px] mt-0.5">${sub}</div></div>
+      <div class="flex-1 flex items-center gap-2.5 min-w-0">${crest(a, 'crest-sm')}<span class="text-[14px] font-semibold truncate">${a.name}</span></div>
+    </button>`;
+}
 
-  const groupsHtml = groups.map((g) => {
+/* ===================== SCREEN: SPIELPLAN ===================== */
+function viewSchedule() {
+  const groupsHtml = Object.keys(state.data.groups).map((g) => {
     const matches = state.data.matches
       .filter((m) => m.group === g)
       .sort((a, b) => new Date(a.utcDate) - new Date(b.utcDate));
-
-    const rows = matches.map((m) => {
-      const h = team(m.home), a = team(m.away);
-      const played = isPlayed(m);
-      const live = m.status === 'IN_PLAY';
-      const center = played
-        ? `<div class="score text-[20px] ${live ? 'text-wm-red' : ''}">${m.score.home}<span class="opacity-25 mx-1.5">:</span>${m.score.away}</div>`
-        : `<div class="text-[14px] font-bold text-ink-900/55 dark:text-ink-50/55 tabular-nums">${new Date(m.utcDate).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })}</div>`;
-      const sub = live ? `<span class="text-wm-red font-bold">${liveMinute(m)}</span>`
-        : (played ? `<span class="text-ink-900/35 dark:text-ink-50/35">Endstand</span>`
-        : `<span class="text-ink-900/35 dark:text-ink-50/35">${fmtKickoff(m.utcDate).split(',')[0]}</span>`);
-
-      return `
-        <div class="flex items-center gap-2 px-4 py-3">
-          <div class="flex-1 flex items-center justify-end gap-2.5 min-w-0 text-right">
-            <span class="text-[14px] font-semibold truncate">${h.name}</span>
-            ${crest(h, 'crest-sm')}
-          </div>
-          <div class="shrink-0 min-w-[68px] text-center">
-            ${center}
-            <div class="text-[10px] mt-0.5">${sub}</div>
-          </div>
-          <div class="flex-1 flex items-center gap-2.5 min-w-0">
-            ${crest(a, 'crest-sm')}
-            <span class="text-[14px] font-semibold truncate">${a.name}</span>
-          </div>
-        </div>`;
-    }).join('<div class="h-px bg-black/5 dark:bg-white/10 mx-4"></div>');
-
+    const rows = matches.map(matchRow).join('<div class="h-px bg-black/5 dark:bg-white/10 mx-4"></div>');
     return `
-      <section class="fade-up">
-        <div class="flex items-center justify-between mb-2 px-1">
-          <h3 class="text-[13px] font-bold tracking-wide text-ink-900/50 dark:text-ink-50/50">GRUPPE ${g}</h3>
-        </div>
-        <div class="rounded-xl2 bg-white dark:bg-ink-900 shadow-card dark:shadow-card-dark overflow-hidden">
-          ${rows}
-        </div>
+      <section>
+        <h3 class="text-[13px] font-bold tracking-wide text-ink-900/45 dark:text-ink-50/45 mb-2 px-1">GRUPPE ${g}</h3>
+        <div class="rounded-xl2 bg-white dark:bg-ink-900 shadow-card dark:shadow-card-dark overflow-hidden">${rows}</div>
       </section>`;
   }).join('');
+  return `<div class="stagger space-y-6">${groupsHtml}</div>`;
+}
 
-  const isMatches = state.tickerView !== 'table';
+/* ===================== SCREEN: HEUTE (Übersicht) ===================== */
+function viewToday() {
+  const liveMatches = state.data.matches
+    .filter((m) => m.status === 'IN_PLAY')
+    .sort((a, b) => (b.minute || 0) - (a.minute || 0));
+  const next = nextMatch();
 
-  return `
+  // Live-Strip (horizontale Mini-Karten)
+  const liveStrip = liveMatches.length ? `
+    <section>
+      <div class="flex items-center gap-2 mb-2 px-1">
+        <span class="w-2 h-2 rounded-full bg-wm-red live-dot"></span>
+        <h3 class="text-[13px] font-bold tracking-wide text-ink-900/55 dark:text-ink-50/55">LIVE JETZT</h3>
+      </div>
+      <div class="flex gap-3 overflow-x-auto -mx-5 px-5 pb-1">
+        ${liveMatches.map((m) => {
+          const h = team(m.home), a = team(m.away);
+          return `<button data-action="open-match" data-id="${m.id}" class="press shrink-0 w-[150px] rounded-xl2 bg-white dark:bg-ink-900 shadow-card dark:shadow-card-dark p-3 text-left">
+            <div class="flex items-center justify-between mb-2">
+              <span class="inline-flex items-center gap-1 text-[10px] font-bold text-wm-red"><span class="w-1.5 h-1.5 rounded-full bg-wm-red live-dot"></span>${liveMinute(m)}</span>
+              <span class="text-[10px] text-ink-900/40 dark:text-ink-50/40">Gr. ${m.group}</span>
+            </div>
+            <div class="flex items-center gap-2 mb-1.5">${crest(h, 'crest-sm')}<span class="text-[13px] font-semibold truncate flex-1">${h.name}</span><span class="score text-[15px]">${m.score.home}</span></div>
+            <div class="flex items-center gap-2">${crest(a, 'crest-sm')}<span class="text-[13px] font-semibold truncate flex-1">${a.name}</span><span class="score text-[15px]">${m.score.away}</span></div>
+          </button>`;
+        }).join('')}
+      </div>
+    </section>` : '';
+
+  // Countdown zum nächsten Spiel
+  const countdown = next ? `
+    <section>
+      <div class="rounded-xl2 pitch-grad text-white shadow-card p-5 relative overflow-hidden">
+        <div class="absolute inset-0 opacity-[0.06]" style="background-image:radial-gradient(circle at 1px 1px,#fff 1px,transparent 0);background-size:22px 22px"></div>
+        <div class="relative">
+          <p class="text-[11px] font-bold tracking-widest uppercase text-wm-lime mb-3">Nächstes Spiel · in</p>
+          <div id="countdown" data-target="${+new Date(next.utcDate)}" class="cd-num text-[34px] leading-none mb-3">––:––:––</div>
+          <div class="flex items-center justify-center gap-3">
+            <div class="flex items-center gap-2 flex-1 justify-end min-w-0"><span class="text-[14px] font-semibold truncate">${team(next.home).name}</span>${crest(team(next.home), 'crest-md', true)}</div>
+            <span class="text-[13px] font-bold text-white/50">vs</span>
+            <div class="flex items-center gap-2 flex-1 min-w-0">${crest(team(next.away), 'crest-md', true)}<span class="text-[14px] font-semibold truncate">${team(next.away).name}</span></div>
+          </div>
+          <p class="text-center text-[11px] text-white/55 mt-3">${fmtKickoff(next.utcDate)} Uhr · Gruppe ${next.group}</p>
+        </div>
+      </div>
+    </section>` : '';
+
+  // Heutige Spiele
+  const today0 = startOfDay(Date.now());
+  const todays = state.data.matches
+    .filter((m) => startOfDay(+new Date(m.utcDate)) === today0)
+    .sort((a, b) => new Date(a.utcDate) - new Date(b.utcDate));
+  const todayList = todays.length ? `
+    <section>
+      <h3 class="text-[13px] font-bold tracking-wide text-ink-900/45 dark:text-ink-50/45 mb-2 px-1">HEUTE · ${todays.length} ${todays.length === 1 ? 'SPIEL' : 'SPIELE'}</h3>
+      <div class="rounded-xl2 bg-white dark:bg-ink-900 shadow-card dark:shadow-card-dark overflow-hidden">
+        ${todays.map(matchRow).join('<div class="h-px bg-black/5 dark:bg-white/10 mx-4"></div>')}
+      </div>
+    </section>` : '';
+
+  return `<div class="stagger space-y-6">
+    ${liveStrip}
     ${sectionHero()}
+    ${countdown}
+    ${challengeSnapshot()}
+    ${todayList}
+    ${sectionScorers()}
+  </div>`;
+}
 
-    <!-- Globaler Tor-Zähler (Bridge zur Challenge) -->
-    <div class="fade-up rounded-xl2 px-5 py-4 mb-5 text-white shadow-card relative overflow-hidden"
-         style="background:linear-gradient(135deg,#10B981 0%,#0e3b22 60%,#0a0f0d 100%)">
-      <div class="absolute -right-5 -top-7 text-[110px] leading-none opacity-10 select-none">⚽️</div>
-      <div class="flex items-center justify-between">
-        <div>
-          <p class="text-[11px] font-semibold tracking-widest uppercase text-white/70">Tore bei der WM 2026</p>
-          <div class="flex items-end gap-2 mt-0.5">
-            <span class="score text-4xl">${goals}</span>
-            <span class="mb-1 text-[13px] text-white/70">= ${goals} km Soll</span>
+/** Kompakte Challenge-Bilanz auf „Heute" + Brücke zur Challenge */
+function challengeSnapshot() {
+  const soll = sollKm(), ist = totalRan(), open = Math.max(0, soll - ist);
+  const pct = soll > 0 ? Math.min(1, ist / soll) : 0;
+  const done = soll > 0 && ist >= soll;
+  return `
+    <section>
+      <button data-action="switch-tab" data-tab="challenge" class="press w-full text-left rounded-xl2 bg-white dark:bg-ink-900 shadow-card dark:shadow-card-dark p-5">
+        <div class="flex items-center justify-between mb-3">
+          <h3 class="text-[15px] font-bold">Deine Challenge</h3>
+          <span class="text-[12px] font-semibold text-wm-emerald">Öffnen →</span>
+        </div>
+        <div class="flex items-end gap-4">
+          <div>
+            <p class="text-[11px] font-semibold uppercase tracking-wide text-ink-900/40 dark:text-ink-50/40">${done ? 'Geschafft' : 'Noch offen'}</p>
+            <p class="score text-[40px] leading-none ${done ? 'text-wm-emerald' : ''}">${fmtKm(open)}<span class="text-[15px] font-semibold text-ink-900/40 dark:text-ink-50/40 ml-1">km</span></p>
+          </div>
+          <div class="flex-1 pb-1">
+            <div class="flex justify-between text-[11px] text-ink-900/45 dark:text-ink-50/45 mb-1"><span>${fmtKm(ist)} km</span><span>${fmtKm(soll)} km</span></div>
+            <div class="h-2 rounded-full bg-black/[0.06] dark:bg-white/[0.08] overflow-hidden">
+              <div class="h-full rounded-full" style="width:${(pct * 100).toFixed(1)}%;background:linear-gradient(90deg,#10B981,#34C759)"></div>
+            </div>
           </div>
         </div>
-        <p class="text-[12px] text-white/70 text-right leading-tight">${playedMatches().length}/${state.data.matches.length}<br>Spiele</p>
-      </div>
-    </div>
+      </button>
+    </section>`;
+}
 
-    <!-- Segment: Spielplan / Tabellen -->
-    <div class="fade-up grid grid-cols-2 gap-1 p-1 mb-5 rounded-xl bg-black/[0.05] dark:bg-white/[0.06]">
-      <button data-action="ticker-view" data-view="matches"
-              class="py-1.5 rounded-lg text-[13px] font-semibold transition ${isMatches ? 'bg-white dark:bg-ink-900 shadow-sm' : 'text-ink-900/50 dark:text-ink-50/50'}">Spielplan</button>
-      <button data-action="ticker-view" data-view="table"
-              class="py-1.5 rounded-lg text-[13px] font-semibold transition ${!isMatches ? 'bg-white dark:bg-ink-900 shadow-sm' : 'text-ink-900/50 dark:text-ink-50/50'}">Tabellen</button>
-    </div>
+/** Nächstes geplantes Spiel (für Countdown) */
+function nextMatch() {
+  return state.data.matches
+    .filter((m) => m.status === 'SCHEDULED')
+    .sort((a, b) => new Date(a.utcDate) - new Date(b.utcDate))[0] || null;
+}
 
-    ${isMatches ? `<div class="space-y-6">${groupsHtml}</div>` : viewStandings()}
-
+/* ===================== SCREEN: TABELLE (Gruppen + K.o.-Baum) ===================== */
+function viewTable() {
+  return `<div class="stagger space-y-6">
+    ${viewStandings()}
+    ${sectionBracket()}
     ${sectionScorers()}
-
-    <p class="text-center text-[11px] text-ink-900/35 dark:text-ink-50/35 mt-8">
-      ${CONFIG.apiBase ? 'Live-Daten via Worker · Tabellen live berechnet' : 'Demo-Daten · mit Worker + API-Key werden alle Ergebnisse echt & live'}
-    </p>`;
+  </div>`;
 }
 
 /** Wählt das „Spiel des Moments": laufend → als nächstes → zuletzt beendet */
@@ -489,7 +559,6 @@ function heroMatch() {
 
 /** Großes Featured-Match (Pitch-Verlauf) – wie „Top Event" in den Inspo-Designs */
 function sectionHero() {
-  if (state.tickerView === 'table') return '';
   const m = heroMatch();
   if (!m) return '';
   const h = team(m.home), a = team(m.away);
@@ -503,7 +572,7 @@ function sectionHero() {
     : `<div class="text-2xl font-extrabold text-white/85">VS</div>`;
 
   return `
-    <div class="fade-up pitch-grad rounded-xl2 p-5 mb-5 text-white shadow-card relative overflow-hidden">
+    <button data-action="open-match" data-id="${m.id}" class="press block w-full text-left pitch-grad rounded-xl2 p-5 text-white shadow-card relative overflow-hidden">
       <div class="absolute inset-0 opacity-[0.06]" style="background-image:radial-gradient(circle at 1px 1px,#fff 1px,transparent 0);background-size:22px 22px"></div>
       <div class="relative">
         <div class="flex items-center justify-between mb-4">
@@ -522,10 +591,10 @@ function sectionHero() {
           </div>
         </div>
         <div class="mt-4 flex items-center justify-center gap-2 text-[11px] text-white/55">
-          <span>Gruppe ${m.group}</span><span>·</span><span>FIFA WM 2026</span>
+          <span>Gruppe ${m.group}</span><span>·</span><span>Tippen für Details</span>
         </div>
       </div>
-    </div>`;
+    </button>`;
 }
 
 /** Alle Gruppentabellen (live aus Ergebnissen berechnet) */
@@ -588,10 +657,50 @@ function sectionScorers() {
     </div>`).join('<div class="h-px bg-black/5 dark:bg-white/10 mx-4"></div>');
 
   return `
-    <div class="fade-up rounded-xl2 bg-white dark:bg-ink-900 shadow-card dark:shadow-card-dark overflow-hidden mt-6">
+    <div class="rounded-xl2 bg-white dark:bg-ink-900 shadow-card dark:shadow-card-dark overflow-hidden">
       <div class="px-4 pt-4 pb-2"><h3 class="text-[15px] font-bold">⚽️ Torschützenkönige</h3></div>
       ${rows}
     </div>`;
+}
+
+/* ---- K.o.-Baum (Knockout) ---- */
+const KO_STAGES = [
+  ['LAST_32', 'Sechzehntelfinale'],
+  ['LAST_16', 'Achtelfinale'],
+  ['QUARTER_FINALS', 'Viertelfinale'],
+  ['SEMI_FINALS', 'Halbfinale'],
+  ['THIRD_PLACE', 'Spiel um Platz 3'],
+  ['FINAL', 'Finale'],
+];
+
+function sectionBracket() {
+  const ko = state.data.matches.filter((m) => KO_STAGES.some(([k]) => k === m.stage));
+
+  if (!ko.length) {
+    return `
+      <div class="rounded-xl2 bg-white dark:bg-ink-900 shadow-card dark:shadow-card-dark p-6 text-center">
+        <div class="w-12 h-12 mx-auto mb-3 rounded-full grid place-items-center text-2xl" style="background:linear-gradient(135deg,#10B981,#059669)">🏆</div>
+        <h3 class="text-[15px] font-bold mb-1">K.o.-Baum</h3>
+        <p class="text-[13px] text-ink-900/50 dark:text-ink-50/50 leading-relaxed">
+          Die K.o.-Phase startet nach der Gruppenphase.<br>
+          32 Teams ziehen weiter – bis zum Finale am 19. Juli 2026 in New York/NJ. 🇺🇸
+        </p>
+      </div>`;
+  }
+
+  const rounds = KO_STAGES.map(([key, label]) => {
+    const ms = ko.filter((m) => m.stage === key).sort((a, b) => new Date(a.utcDate) - new Date(b.utcDate));
+    if (!ms.length) return '';
+    return `
+      <section>
+        <h3 class="text-[13px] font-bold tracking-wide text-ink-900/45 dark:text-ink-50/45 mb-2 px-1">${label.toUpperCase()}</h3>
+        <div class="rounded-xl2 bg-white dark:bg-ink-900 shadow-card dark:shadow-card-dark overflow-hidden">
+          ${ms.map(matchRow).join('<div class="h-px bg-black/5 dark:bg-white/10 mx-4"></div>')}
+        </div>
+      </section>`;
+  }).join('');
+
+  return `<div class="space-y-6">${rounds}</div>`;
 }
 
 /* ------------------------------------------------------------------ *
@@ -702,7 +811,8 @@ function viewChallenge() {
       </div>
 
       <button data-action="submit-km-btn"
-              class="w-full mt-4 py-3 rounded-xl bg-wm-blue text-white font-semibold active:scale-[.98] transition">
+              class="press w-full mt-4 py-3 rounded-xl text-white font-semibold shadow-glow"
+              style="background:linear-gradient(135deg,#10B981,#059669)">
         Lauf hinzufügen
       </button>
     </div>
@@ -892,14 +1002,17 @@ function render() {
   const app = document.getElementById('app');
 
   if (state.loading) {
-    app.innerHTML = `<div class="py-24 grid place-items-center text-ink-900/40 dark:text-ink-50/40">
-      <svg class="w-8 h-8 animate-spin" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3" opacity=".2"/><path d="M22 12a10 10 0 0 0-10-10" stroke="currentColor" stroke-width="3" stroke-linecap="round"/></svg>
-    </div>`;
+    const sk = (h) => `<div class="skeleton rounded-xl2" style="height:${h}px"></div>`;
+    app.innerHTML = `<div class="space-y-4">${sk(150)}${sk(96)}${sk(120)}${sk(200)}</div>`;
     return;
   }
 
-  app.innerHTML = state.tab === 'ticker' ? viewTicker() : viewChallenge();
-  document.getElementById('header-title').textContent = state.tab === 'ticker' ? 'Live-Ticker' : 'Lauf-Challenge';
+  const VIEWS = { today: viewToday, schedule: viewSchedule, table: viewTable, challenge: viewChallenge };
+  const TITLES = { today: 'Übersicht', schedule: 'Spielplan', table: 'Tabellen', challenge: 'Challenge' };
+  const view = VIEWS[state.tab] || viewToday;
+
+  app.innerHTML = `<div class="tab-enter">${view()}</div>`;
+  document.getElementById('header-title').textContent = TITLES[state.tab] || 'WM 2026';
   setGreeting();
 
   // Aktiven Nav-Button als Kapsel hervorheben
@@ -907,6 +1020,8 @@ function render() {
     btn.classList.toggle('nav-active', btn.dataset.tab === state.tab);
   });
 
+  stopCountdown();
+  if (state.tab === 'today') startCountdown();
   if (state.tab === 'challenge') onChallengeRendered();
 }
 
@@ -917,6 +1032,82 @@ function setGreeting() {
   const h = new Date().getHours();
   const greet = h < 5 ? 'Gute Nacht' : h < 11 ? 'Guten Morgen' : h < 17 ? 'Guten Tag' : h < 22 ? 'Guten Abend' : 'Gute Nacht';
   el.textContent = `${greet} 👋`;
+}
+
+/* ------------------------------------------------------------------ *
+ * 7b) COUNTDOWN (nächstes Spiel, tickt jede Sekunde)
+ * ------------------------------------------------------------------ */
+let countdownTimer = null;
+const pad2 = (n) => String(n).padStart(2, '0');
+
+function tickCountdown() {
+  const el = document.getElementById('countdown');
+  if (!el) { stopCountdown(); return; }
+  const diff = Number(el.dataset.target) - Date.now();
+  if (diff <= 0) { el.textContent = 'Jetzt!'; return; }
+  const s = Math.floor(diff / 1000);
+  const d = Math.floor(s / 86400), h = Math.floor((s % 86400) / 3600), m = Math.floor((s % 3600) / 60), ss = s % 60;
+  const sep = '<span class="opacity-30 mx-1">:</span>';
+  el.innerHTML = (d > 0 ? `${d}<span class="text-[18px] mr-2">T</span>` : '') + `${pad2(h)}${sep}${pad2(m)}${sep}${pad2(ss)}`;
+}
+function startCountdown() {
+  stopCountdown();
+  if (document.getElementById('countdown')) { tickCountdown(); countdownTimer = setInterval(tickCountdown, 1000); }
+}
+function stopCountdown() { if (countdownTimer) { clearInterval(countdownTimer); countdownTimer = null; } }
+
+/* ------------------------------------------------------------------ *
+ * 7c) SPIEL-DETAIL-SHEET (Bottom-Sheet)
+ * ------------------------------------------------------------------ */
+function openMatchSheet(id) {
+  const m = state.data.matches.find((x) => x.id === id);
+  if (!m) return;
+  const h = team(m.home), a = team(m.away);
+  const live = m.status === 'IN_PLAY', played = isPlayed(m);
+  const d = new Date(m.utcDate);
+
+  const statusPill = live
+    ? `<span class="inline-flex items-center gap-1.5 text-[12px] font-bold px-3 py-1 rounded-full bg-wm-red text-white"><span class="w-1.5 h-1.5 rounded-full bg-white live-dot"></span>${liveMinute(m)}</span>`
+    : played ? `<span class="text-[12px] font-semibold px-3 py-1 rounded-full bg-black/5 dark:bg-white/10 text-ink-900/55 dark:text-ink-50/55">Endstand</span>`
+    : `<span class="text-[12px] font-semibold px-3 py-1 rounded-full bg-wm-emerald/12 text-wm-emerald">Geplant</span>`;
+  const center = played
+    ? `<div class="score text-[44px] leading-none ${live ? 'text-wm-red' : ''}">${m.score.home}<span class="opacity-30 mx-2">:</span>${m.score.away}</div>`
+    : `<div class="text-3xl font-extrabold text-ink-900/40 dark:text-ink-50/40">VS</div>`;
+  const stageLabel = (KO_STAGES.find(([k]) => k === m.stage) || [])[1] || (m.group && m.group !== '–' ? `Gruppe ${m.group}` : 'WM 2026');
+  const info = (label, val) => `<div class="flex items-center justify-between py-3"><span class="text-[13px] text-ink-900/50 dark:text-ink-50/50">${label}</span><span class="text-[14px] font-semibold text-right">${val}</span></div>`;
+
+  const sheet = document.createElement('div');
+  sheet.id = 'match-sheet';
+  sheet.innerHTML = `
+    <div class="sheet-backdrop" data-action="close-sheet"></div>
+    <div class="sheet max-w-md mx-auto bg-ink-50 dark:bg-ink-950 rounded-t-[28px] px-5 pb-8 pt-1 max-h-[88vh] overflow-y-auto">
+      <div class="grabber"></div>
+      <div class="flex justify-center mb-4">${statusPill}</div>
+      <div class="flex items-center justify-between gap-3 mb-5">
+        <div class="flex-1 flex flex-col items-center gap-2 text-center min-w-0">${crest(h, 'crest-lg', true)}<span class="text-[14px] font-semibold">${h.name}</span></div>
+        <div class="shrink-0 text-center">${center}</div>
+        <div class="flex-1 flex flex-col items-center gap-2 text-center min-w-0">${crest(a, 'crest-lg', true)}<span class="text-[14px] font-semibold">${a.name}</span></div>
+      </div>
+      <div class="rounded-xl2 bg-white dark:bg-ink-900 shadow-card dark:shadow-card-dark px-4 divide-y divide-black/5 dark:divide-white/10">
+        ${info('Wettbewerb', 'FIFA WM 2026')}
+        ${info('Runde', stageLabel)}
+        ${info('Datum', d.toLocaleDateString('de-DE', { weekday: 'long', day: '2-digit', month: 'long' }))}
+        ${info('Anstoß', fmtTime(m.utcDate) + ' Uhr')}
+        ${m.venue ? info('Stadion', m.venue) : ''}
+        ${info('Status', live ? `Läuft – ${liveMinute(m)}` : (played ? 'Beendet' : 'Noch nicht angepfiffen'))}
+      </div>
+      <button data-action="close-sheet" class="press w-full mt-5 py-3 rounded-xl bg-black/5 dark:bg-white/10 font-semibold text-[14px]">Schließen</button>
+    </div>`;
+  document.body.appendChild(sheet);
+  if (navigator.vibrate) navigator.vibrate(8);
+}
+
+function closeSheet() {
+  const s = document.getElementById('match-sheet');
+  if (!s) return;
+  s.querySelector('.sheet-backdrop')?.classList.add('closing');
+  s.querySelector('.sheet')?.classList.add('closing');
+  setTimeout(() => s.remove(), 260);
 }
 
 /* ------------------------------------------------------------------ *
@@ -985,12 +1176,12 @@ document.addEventListener('click', (e) => {
       window.scrollTo({ top: 0 });
       break;
 
-    case 'ticker-view':
-      if (state.tickerView !== el.dataset.view) {
-        state.tickerView = el.dataset.view;
-        persist();
-        render();
-      }
+    case 'open-match':
+      openMatchSheet(el.dataset.id);
+      break;
+
+    case 'close-sheet':
+      closeSheet();
       break;
 
     case 'install':
@@ -1138,7 +1329,7 @@ function showInstallBanner(kind) {
 
   const action = kind === 'ios'
     ? `<button data-action="dismiss-install" class="text-[13px] font-semibold text-wm-blue px-2 py-1">Verstanden</button>`
-    : `<button data-action="install" class="text-[13px] font-semibold text-white bg-wm-blue px-4 py-1.5 rounded-full active:scale-95 transition">Installieren</button>`;
+    : `<button data-action="install" class="press text-[13px] font-semibold text-white px-4 py-1.5 rounded-full" style="background:linear-gradient(135deg,#10B981,#059669)">Installieren</button>`;
 
   const el = document.createElement('div');
   el.id = 'install-banner';
@@ -1292,9 +1483,9 @@ function burstConfetti(count) {
 const urlTheme = (typeof location !== 'undefined') ? new URLSearchParams(location.search).get('theme') : null;
 applyTheme(urlTheme === 'dark' || urlTheme === 'light' ? urlTheme : load(LS.theme, null));
 
-// Optionaler Tab-Deeplink (?tab=ticker|challenge)
+// Optionaler Tab-Deeplink (?tab=today|schedule|table|challenge)
 const urlTab = (typeof location !== 'undefined') ? new URLSearchParams(location.search).get('tab') : null;
-if (urlTab === 'ticker' || urlTab === 'challenge') state.tab = urlTab;
+if (VALID_TABS.includes(urlTab)) state.tab = urlTab;
 
 (async function init() {
   render();                         // Lade-Spinner

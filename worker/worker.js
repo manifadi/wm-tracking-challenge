@@ -89,6 +89,8 @@ async function fetchBase(env) {
     return {
       id: String(m.id),
       group: grp,
+      stage: m.stage ?? null,            // GROUP_STAGE | LAST_16 | … (für K.o.-Baum)
+      venue: m.venue ?? null,            // Stadion (fürs Detail-Sheet, falls vorhanden)
       status: FD_STATUS[m.status] ?? 'SCHEDULED',
       utcDate: m.utcDate,
       _home: home, _away: away,          // intern: für Live-Matching
